@@ -4,8 +4,11 @@ from argparse import Namespace
 from pathlib import Path
 
 from mewcode.desktop.policy import DesktopPolicyGuard
+from mewcode.desktop.reporting import KnowledgeReportWorkflow
 from mewcode.desktop.registry import create_desktop_registry
 from mewcode.desktop.service import DesktopTaskService
+from mewcode.desktop.skills.document import DocumentSkill
+from mewcode.desktop.skills.knowledge import KnowledgeSkill
 from mewcode.desktop.trace_store import TaskTraceStore
 from mewcode.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
 
@@ -16,9 +19,6 @@ def run_desktop_foundation(args: Namespace) -> int:
     当前入口只验证用户显式授权的目录、创建 task_id 和 Trace；资料检索、
     文档写入、文件整理会在后续 Skill 注册后接入，不能借此入口绕过策略。
     """
-    if not args.desktop_task:
-        print("Desktop mode requires --desktop-task", flush=True)
-        return 2
     if not args.desktop_read_root:
         print("Desktop mode requires at least one --desktop-read-root", flush=True)
         return 2
@@ -40,8 +40,39 @@ def run_desktop_foundation(args: Namespace) -> int:
         return 2
 
     registry = create_desktop_registry()
-    service = DesktopTaskService(DesktopPolicyGuard(workspace), TaskTraceStore(workspace))
+    trace_store = TaskTraceStore(workspace)
+    service = DesktopTaskService(DesktopPolicyGuard(workspace), trace_store)
+    workflow = KnowledgeReportWorkflow(service, KnowledgeSkill(workspace), DocumentSkill(workspace))
+
+    if getattr(args, "desktop_confirm_task", None):
+        try:
+            task = trace_store.load_task_object(args.desktop_confirm_task)
+            workflow.confirm_and_deliver(task, approved=True)
+        except (OSError, ValueError) as exc:
+            print(f"Desktop delivery error: {exc}", flush=True)
+            return 2
+        print(f"LocalDesk task delivered: {task.task_id}")
+        print(f"status: {task.status.value}")
+        print(f"artifact: {task.artifacts[-1].final_path}")
+        return 0
+
+    if not args.desktop_task:
+        print("Desktop mode requires --desktop-task", flush=True)
+        return 2
     task = service.create_task(args.desktop_task)
+    if getattr(args, "desktop_report_name", None):
+        try:
+            draft = workflow.prepare(task, args.desktop_report_name)
+        except ValueError as exc:
+            print(f"Desktop report error: {exc}", flush=True)
+            return 2
+        print(f"LocalDesk report staged: {task.task_id}")
+        print(f"status: {task.status.value}")
+        print(f"staging: {draft.staged_path}")
+        print(f"planned output: {draft.final_path}")
+        print(f"citations: {len(draft.source_citations)}")
+        print(f"confirm with --desktop-confirm-task {task.task_id}")
+        return 0
     print(f"LocalDesk task created: {task.task_id}")
     print(f"status: {task.status.value}")
     print(f"desktop tools registered: {len(registry.list_tools())}")

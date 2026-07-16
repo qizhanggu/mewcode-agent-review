@@ -74,6 +74,8 @@ def main() -> None:
     )
     parser.add_argument("--desktop-output-root", help="Absolute directory for generated artifacts")
     parser.add_argument("--desktop-task-root", help="Absolute directory for LocalDesk task traces")
+    parser.add_argument("--desktop-report-name", help="Stage a cited Markdown report with this filename")
+    parser.add_argument("--desktop-confirm-task", help="Confirm and deliver an already staged LocalDesk task")
     args = parser.parse_args()
 
     if args.desktop:

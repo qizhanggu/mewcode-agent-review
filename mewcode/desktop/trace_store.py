@@ -24,6 +24,9 @@ class TaskTraceStore:
     def load_task(self, task_id: str) -> dict:
         return json.loads(self._task_path(task_id).read_text(encoding="utf-8"))
 
+    def load_task_object(self, task_id: str) -> Task:
+        return Task.from_dict(self.load_task(task_id))
+
     def append(self, task_id: str, event_type: str, payload: dict) -> TraceEvent:
         events_path = self._events_path(task_id)
         sequence = 1

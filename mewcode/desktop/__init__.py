@@ -12,6 +12,7 @@ from mewcode.desktop.models import (
     TraceEvent,
 )
 from mewcode.desktop.policy import DesktopPolicyGuard, PolicyDecision
+from mewcode.desktop.reporting import KnowledgeReportWorkflow
 from mewcode.desktop.service import DesktopTaskService
 from mewcode.desktop.workspace import DesktopWorkspace, WorkspaceConfig
 
@@ -20,6 +21,7 @@ __all__ = [
     "DesktopPolicyGuard",
     "DesktopTaskService",
     "DesktopWorkspace",
+    "KnowledgeReportWorkflow",
     "PlannedAction",
     "PolicyDecision",
     "Task",

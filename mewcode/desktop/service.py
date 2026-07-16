@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from mewcode.desktop.models import PlannedAction, Task, TaskStatus, TERMINAL_STATUSES
+from mewcode.desktop.models import Artifact, PlannedAction, Task, TaskStatus, TERMINAL_STATUSES
 from mewcode.desktop.policy import DesktopPolicyGuard
 from mewcode.desktop.trace_store import TaskTraceStore
 
@@ -74,6 +74,14 @@ class DesktopTaskService:
             self._transition(task, TaskStatus.FAILED)
         else:
             self._transition(task, TaskStatus.SUCCEEDED)
+
+    def add_artifact(self, task: Task, artifact: Artifact) -> None:
+        if task.status != TaskStatus.EXECUTING:
+            raise TaskStateError("只有执行中的任务可以交付产物")
+        task.artifacts.append(artifact)
+        task.touch()
+        self.trace_store.save_task(task)
+        self.trace_store.append(task.task_id, "artifact_committed", artifact.__dict__)
 
     def _transition(self, task: Task, target: TaskStatus) -> None:
         if task.status in TERMINAL_STATUSES or target not in _ALLOWED_TRANSITIONS[task.status]:

@@ -1,6 +1,6 @@
 # LocalDesk Agent 重构设计与验证计划
 
-> 状态：Phase 1 Foundation 已完成；资料检索、文档产物和文件实际执行尚未实现。本文约束后续改造顺序；任何超出 v1 范围的能力须另行评审。
+> 状态：Phase 2 已完成并暂停验收；资料检索、staging Markdown 与确认交付已经实现，尚未进入文件整理。本文约束后续改造顺序；任何超出 v1 范围的能力须另行评审。
 
 ## 1. 目标与非目标
 
@@ -80,6 +80,8 @@ mewcode/desktop/
 
 - MD/TXT/PDF 文本提取、词法检索、带来源引用的 Markdown staging/commit。
 - 完成条件：未确认不写 output；确认后产物、哈希、引用都可从 Trace 验证。
+
+实现记录：已完成，验收结论、测试结果、手工验证步骤与已知限制见 [`phase2_acceptance.md`](phase2_acceptance.md)。
 
 ### M3：文件整理
 

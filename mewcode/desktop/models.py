@@ -86,3 +86,9 @@ class Task:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Task":
+        actions = [PlannedAction(action_id=item["action_id"], skill=item["skill"], kind=ActionKind(item["kind"]), args=item["args"], summary=item["summary"], requires_confirmation=item.get("requires_confirmation", False), status=item.get("status", "pending"), preview=item.get("preview", {})) for item in data.get("actions", [])]
+        artifacts = [Artifact(**item) for item in data.get("artifacts", [])]
+        return cls(task_id=data["task_id"], user_query=data["user_query"], status=TaskStatus(data["status"]), plan=data.get("plan", ""), actions=actions, artifacts=artifacts, error=data.get("error"), created_at=data["created_at"], updated_at=data["updated_at"])
