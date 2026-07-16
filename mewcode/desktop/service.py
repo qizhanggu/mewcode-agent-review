@@ -8,8 +8,8 @@ from mewcode.desktop.trace_store import TaskTraceStore
 
 
 _ALLOWED_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
-    TaskStatus.DRAFT: {TaskStatus.PLANNED, TaskStatus.CANCELLED},
-    TaskStatus.PLANNED: {TaskStatus.AWAITING_CONFIRMATION, TaskStatus.EXECUTING, TaskStatus.CANCELLED},
+    TaskStatus.DRAFT: {TaskStatus.PLANNED, TaskStatus.FAILED, TaskStatus.CANCELLED},
+    TaskStatus.PLANNED: {TaskStatus.AWAITING_CONFIRMATION, TaskStatus.EXECUTING, TaskStatus.FAILED, TaskStatus.CANCELLED},
     TaskStatus.AWAITING_CONFIRMATION: {TaskStatus.EXECUTING, TaskStatus.CANCELLED},
     TaskStatus.EXECUTING: {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED},
     TaskStatus.SUCCEEDED: set(),
@@ -82,6 +82,11 @@ class DesktopTaskService:
         task.touch()
         self.trace_store.save_task(task)
         self.trace_store.append(task.task_id, "artifact_committed", artifact.__dict__)
+
+    def fail(self, task: Task, error: str, event_type: str = "task_failed") -> None:
+        task.error = error
+        self._transition(task, TaskStatus.FAILED)
+        self.trace_store.append(task.task_id, event_type, {"error": error})
 
     def _transition(self, task: Task, target: TaskStatus) -> None:
         if task.status in TERMINAL_STATUSES or target not in _ALLOWED_TRANSITIONS[task.status]:

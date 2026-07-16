@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from argparse import Namespace
 from pathlib import Path
 
@@ -62,7 +63,17 @@ def run_desktop_foundation(args: Namespace) -> int:
     task = service.create_task(args.desktop_task)
     if getattr(args, "desktop_report_name", None):
         try:
-            draft = workflow.prepare(task, args.desktop_report_name)
+            if getattr(args, "desktop_grounded_llm", False):
+                from mewcode.client import create_client
+                from mewcode.config import load_config
+                from mewcode.desktop.grounded_renderer import GroundedLLMRenderer
+
+                config = load_config()
+                if not config.providers:
+                    raise ValueError("没有配置可用模型 provider")
+                draft = asyncio.run(workflow.prepare_grounded(task, args.desktop_report_name, GroundedLLMRenderer(create_client(config.providers[0]))))
+            else:
+                draft = workflow.prepare(task, args.desktop_report_name)
         except ValueError as exc:
             print(f"Desktop report error: {exc}", flush=True)
             return 2
@@ -71,6 +82,7 @@ def run_desktop_foundation(args: Namespace) -> int:
         print(f"staging: {draft.staged_path}")
         print(f"planned output: {draft.final_path}")
         print(f"citations: {len(draft.source_citations)}")
+        print(f"renderer: {'grounded-llm' if getattr(args, 'desktop_grounded_llm', False) else 'deterministic'}")
         print(f"confirm with --desktop-confirm-task {task.task_id}")
         return 0
     print(f"LocalDesk task created: {task.task_id}")

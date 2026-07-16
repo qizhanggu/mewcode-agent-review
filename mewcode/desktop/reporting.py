@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from mewcode.desktop.models import ActionKind, Artifact, PlannedAction, Task, TaskStatus
+from mewcode.desktop.grounded_renderer import GroundedLLMRenderer, GroundedRenderError
 from mewcode.desktop.service import DesktopTaskService, TaskStateError
 from mewcode.desktop.skills.document import DocumentSkill, StagedDraft
 from mewcode.desktop.skills.knowledge import KnowledgeSkill
@@ -42,6 +43,31 @@ class KnowledgeReportWorkflow:
             },
         )
         self.service.set_plan(task, "检索授权资料并生成 Markdown 草稿；确认后交付到 output。", [action])
+        self.service.trace_store.append(task.task_id, "knowledge_searched", {"query": task.user_query, "indexed_chunks": indexed, "citations": draft.source_citations})
+        self.service.trace_store.append(task.task_id, "draft_staged", asdict(draft))
+        return draft
+
+    async def prepare_grounded(self, task: Task, filename: str, renderer: GroundedLLMRenderer) -> StagedDraft:
+        if task.status != TaskStatus.DRAFT:
+            raise TaskStateError("只有 draft 任务可以准备报告")
+        indexed = self.knowledge.index()
+        chunks = self.knowledge.search(task.user_query)
+        try:
+            rendered = await renderer.render(task.user_query, chunks)
+            draft = self.document.stage_grounded_markdown(task.task_id, task.user_query, rendered.report, chunks, filename)
+        except (GroundedRenderError, ValueError) as exc:
+            self.service.fail(task, str(exc), event_type="llm_render_failed")
+            raise
+        action = PlannedAction(
+            action_id="deliver-markdown",
+            skill="grounded_document",
+            kind=ActionKind.WRITE,
+            args={"destination": draft.final_path},
+            summary="确认后交付带可验证引用的 LLM Markdown 草稿到 output 目录",
+            preview={"staged_path": draft.staged_path, "sha256": draft.sha256, "citations": draft.source_citations, "indexed_chunks": indexed},
+        )
+        self.service.set_plan(task, "检索授权资料，由 LLM 基于给定片段生成结构化报告；确认后交付到 output。", [action])
+        self.service.trace_store.append(task.task_id, "llm_rendered", {"title": rendered.report.title, "sections": [{"heading": item.heading, "citation_ids": item.citation_ids} for item in rendered.report.sections]})
         self.service.trace_store.append(task.task_id, "knowledge_searched", {"query": task.user_query, "indexed_chunks": indexed, "citations": draft.source_citations})
         self.service.trace_store.append(task.task_id, "draft_staged", asdict(draft))
         return draft

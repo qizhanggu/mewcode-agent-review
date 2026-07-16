@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mewcode.desktop.skills.knowledge import SourceChunk
+from mewcode.desktop.grounded_renderer import GroundedReport
 from mewcode.desktop.workspace import DesktopWorkspace, WorkspaceError
 
 
@@ -46,6 +47,26 @@ class DocumentSkill:
         temporary = final.with_suffix(final.suffix + ".tmp")
         temporary.write_bytes(staged.read_bytes())
         os.replace(temporary, final)
+
+    def stage_grounded_markdown(self, task_id: str, query: str, report: GroundedReport, chunks: list[SourceChunk], filename: str) -> StagedDraft:
+        by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        for section in report.sections:
+            if not section.citation_ids or any(cid not in by_id for cid in section.citation_ids):
+                raise WorkspaceError("报告包含无效或缺失 citation_id，拒绝暂存")
+        name = _safe_markdown_filename(filename)
+        staged, final = self.workspace.task_dir(task_id) / "staging" / name, self.workspace.output_root / name
+        if final.exists():
+            raise WorkspaceError(f"禁止覆盖已有文件: {final}")
+        lines = [f"# {report.title}", "", f"> 任务：{query}", ""]
+        used: list[SourceChunk] = []
+        for section in report.sections:
+            lines.extend([f"## {section.heading}", "", section.content, "", "引用：" + ", ".join(f"`{cid}`" for cid in section.citation_ids), ""])
+            used.extend(by_id[cid] for cid in section.citation_ids)
+        unique = list(dict.fromkeys(used))
+        lines.extend(["## Sources", ""] + [f"- `{chunk.chunk_id}`: {chunk.citation()}" for chunk in unique] + [""])
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        return StagedDraft(str(staged), str(final), _sha256(staged), [chunk.citation() for chunk in unique], "基于 LLM 结构化输出和可验证引用生成 Markdown 草稿")
 
 
 def _safe_markdown_filename(filename: str) -> str:
