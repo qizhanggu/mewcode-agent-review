@@ -54,7 +54,32 @@ def main() -> None:
         default=False,
         help="Start in remote mode: WebSocket server on 0.0.0.0:18888 with browser UI",
     )
+    parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="Run the LocalDesk Agent safe task runtime (foundation mode)",
+    )
+    parser.add_argument("--desktop-task", help="Natural-language task for LocalDesk Agent")
+    parser.add_argument(
+        "--desktop-read-root",
+        action="append",
+        default=[],
+        help="Absolute authorized read root; repeat for multiple roots",
+    )
+    parser.add_argument(
+        "--desktop-managed-root",
+        action="append",
+        default=[],
+        help="Absolute directory allowed for confirmed file organization",
+    )
+    parser.add_argument("--desktop-output-root", help="Absolute directory for generated artifacts")
+    parser.add_argument("--desktop-task-root", help="Absolute directory for LocalDesk task traces")
     args = parser.parse_args()
+
+    if args.desktop:
+        from mewcode.desktop.cli import run_desktop_foundation
+
+        sys.exit(run_desktop_foundation(args))
 
     try:
         config = load_config()
@@ -360,4 +385,3 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
 
 if __name__ == "__main__":
     main()
-

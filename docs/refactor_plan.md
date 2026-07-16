@@ -1,6 +1,6 @@
 # LocalDesk Agent 重构设计与验证计划
 
-> 状态：Phase 0 设计稿。本文约束后续改造顺序；任何超出 v1 范围的能力须另行评审。
+> 状态：Phase 1 Foundation 已完成；资料检索、文档产物和文件实际执行尚未实现。本文约束后续改造顺序；任何超出 v1 范围的能力须另行评审。
 
 ## 1. 目标与非目标
 
@@ -73,6 +73,8 @@ mewcode/desktop/
 - `Task` 状态机：`draft -> planned -> awaiting_confirmation -> executing -> succeeded | failed | cancelled`。
 - Workspace、Policy Guard、Trace Store 与 Desktop Registry。
 - 完成条件：无 LLM 也能以测试证明越权、覆盖、Shell、删除均被拒绝。
+
+实现记录：已交付 `mewcode/desktop/` Foundation 和 `--desktop` 零副作用入口；验证结果见 [`phase1_foundation.md`](phase1_foundation.md)。Textual 状态展示将在首个可执行 Skill 接入时补充，避免先做无业务数据的 UI。
 
 ### M2：资料到 Markdown
 
