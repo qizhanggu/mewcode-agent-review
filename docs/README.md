@@ -15,6 +15,8 @@
 | [Phase 3](phase3_acceptance.md) | 文件整理/operation journal/回滚核心模块 |
 | [Phase 4](phase4_acceptance.md) | 评估、README、Demo、求职材料最终验收 |
 | [报告 Demo](report_demo.md) | 无敏感两步交付演示 |
+| [教师查看入口](teacher_review.md) | 一页了解项目能力、证据、边界与待讨论方向 |
+| [DeepSeek 真实评估说明](deepseek_real_eval.md) | 不提交 API Key 的本地配置与 5–10 条样例评估方式 |
 | [求职材料](job_materials.md) | 简历描述、90 秒介绍、深挖问题 |
 
 评估集位于 [`evaluation/evaluation_tasks.json`](../evaluation/evaluation_tasks.json)。
