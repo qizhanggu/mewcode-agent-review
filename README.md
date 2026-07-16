@@ -1,43 +1,53 @@
-# MewCode 项目审查材料
+# LocalDesk Agent
 
-> 本仓库用于评估一个已有 Python Coding Agent 项目的技术结构与后续个人迭代方向，不作为“从零原创”的项目展示。
+面向用户**明确授权本地目录**的受控 Desktop Agent：检索本地资料、生成带引用的 Markdown 草稿、经确认后交付；并提供已测试的确定性文件整理与回滚工作流核心模块。
 
-## 项目来源与当前状态
+## 来源与独立改造范围
 
-- 本仓库包含已有的 MewCode Python 源码；代码文件中保留了原有来源标注。
-- 当前阶段的目标是理解其架构，并在后续围绕具体场景完成独立改造、评测与文档沉淀。
-- 本仓库暂不作为最终简历项目；简历只会描述本人实际完成、验证并能独立讲解的改造。
+本仓库基于 MewCode Python Coding Agent 学习型底座改造。原始代码及来源标注保留，不宣称从零开发。本人独立完成的 LocalDesk 改造集中在 `mewcode/desktop/`：任务状态机、路径授权、deny-first Policy Guard、Trace、资料检索、staging/哈希确认交付、Grounded LLM 渲染约束、文件整理与回滚核心工作流、测试与文档。
 
-## 当前已有能力
+## 架构
 
-- 终端交互式 Coding Agent 与远程 Web 模式
-- Anthropic / OpenAI 协议模型接入
-- MCP 工具扩展与动态工具加载
-- Skills 加载与执行
-- 文件读写、终端命令、代码编辑等工具调用
-- 上下文压缩、会话持久化与自动记忆
-- 权限控制、危险命令检测、路径沙箱与 Worktree 隔离
-- 子 Agent / Team 协作及任务消息传递
-- 单元测试覆盖 Agent 循环、上下文、权限、MCP、记忆与协作模块
+```text
+用户任务
+  -> Knowledge Skill（仅 read_roots，返回 citation_id）
+  -> Deterministic / Grounded LLM Renderer（只接收检索片段）
+  -> Document Skill（task staging + SHA-256）
+  -> Policy Guard + 独立确认
+  -> output_root 交付 + task Trace
 
-## 希望评估的问题
-
-1. 该项目是否值得作为 Agent 求职项目的代码底座继续投入？
-2. 更适合迭代为开发者 Coding Agent、个人求职桌面 Agent，还是其他方向？
-3. 如果继续迭代，哪些核心能力最值得由本人独立完成并形成可验证的评测？
-
-## 本地运行
-
-需要 Python 3.11+。复制配置模板并填入自己的模型服务凭据：
-
-```powershell
-Copy-Item .mewcode/config.yaml.example .mewcode/config.yaml
+managed_roots -> FileOrganizationWorkflow（dry-run -> 确认 -> journal -> 独立确认回滚）
 ```
 
-随后按 `pyproject.toml` 安装依赖，并运行：
+## 安全模型
+
+| 目录 | 权限 |
+|---|---|
+| `read_roots` | 仅检索资料 |
+| `managed_roots` | 仅确定性整理流程在确认后 move/rename |
+| `output_root` | 仅确认后交付 Markdown |
+| `task_root` | task.json、events.jsonl、staging、operation journal |
+
+越权、覆盖、删除、Shell、网络操作直接拒绝。所有写入先 staging；确认前 output 零副作用，确认时复核草稿 SHA-256。每个任务有 task_id、计划、策略决定、确认和产物 Trace。
+
+## 当前能力与非目标
+
+- 支持 MD/TXT/可提取文本 PDF 的轻量检索，引用定位到行号或页码。
+- 支持确定性带引用 Markdown 草稿和确认交付。
+- 支持 Grounded LLM JSON 渲染：每段必须给出本次检索内真实 citation_id；幻觉引用、无引用、解析失败、超时均拒绝暂存。
+- 已实现并测试 `FileOrganizationWorkflow`：dry-run、串行 move、operation journal、独立确认回滚。**它不是已完成的 CLI 用户入口。**
+- 不支持：任意 Shell、删除、覆盖、浏览器、MCP、多 Agent、Electron、真实 GUI 自动化、扫描件 OCR。
+
+## 无敏感报告 Demo
+
+创建仅含构造资料的目录，按 [report_demo.md](docs/report_demo.md) 执行两步：第一次仅 staging，第二次携带 task_id 才交付。真实模型需额外加 `--desktop-grounded-llm`，且仅使用已有本地 provider 配置；见 [真实模型说明](docs/phase25_acceptance.md)。
+
+## 测试与评估
 
 ```powershell
-python -m mewcode
+python -m pytest -q tests/test_file_workflow.py tests/test_desktop_foundation.py tests/test_desktop_reporting.py tests/test_grounded_renderer.py -p no:cacheprovider --basetemp .pytest-phase4
 ```
 
-请勿提交 `.mewcode/config.yaml`、API Key、会话日志或其他本地凭据。
+当前确定性结果：**34 passed，1 skipped**。评估集为 [evaluation_tasks.json](evaluation/evaluation_tasks.json)，含 25 条无敏感任务。真实 LLM 评估尚待本机 provider 配置后补跑；未填写 Citation Validity、结构化解析成功率或端到端成功率。
+
+更多阶段证据：[Phase 2](docs/phase2_acceptance.md)、[Phase 2.5](docs/phase25_acceptance.md)、[Phase 3](docs/phase3_acceptance.md)。
