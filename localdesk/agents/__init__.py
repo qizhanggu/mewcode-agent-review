@@ -27,4 +27,3 @@ __all__ = [
     "format_task_notification",
     "inject_task_notifications",
 ]
-

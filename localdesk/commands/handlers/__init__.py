@@ -38,4 +38,3 @@ ALL_COMMANDS = [
 def register_all_commands(registry: CommandRegistry) -> None:
     for cmd in ALL_COMMANDS:
         registry.register_sync(cmd)
-
