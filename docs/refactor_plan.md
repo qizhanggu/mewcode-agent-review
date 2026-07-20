@@ -27,7 +27,7 @@ CLI / Textual UI
 建议新增目录：
 
 ```text
-mewcode/desktop/
+localdesk/desktop/
   models.py        # Task、Action、Artifact、TraceEvent、状态枚举
   workspace.py     # 授权根、Windows 路径规范化、路径归属
   policy.py        # 多路径检查、风险判定、确认令牌
@@ -74,7 +74,7 @@ mewcode/desktop/
 - Workspace、Policy Guard、Trace Store 与 Desktop Registry。
 - 完成条件：无 LLM 也能以测试证明越权、覆盖、Shell、删除均被拒绝。
 
-实现记录：已交付 `mewcode/desktop/` Foundation 和 `--desktop` 零副作用入口；验证结果见 [`phase1_foundation.md`](phase1_foundation.md)。Textual 状态展示将在首个可执行 Skill 接入时补充，避免先做无业务数据的 UI。
+实现记录：已交付 `localdesk/desktop/` Foundation 和 `--desktop` 零副作用入口；验证结果见 [`phase1_foundation.md`](phase1_foundation.md)。Textual 状态展示将在首个可执行 Skill 接入时补充，避免先做无业务数据的 UI。
 
 ### M2：资料到 Markdown
 

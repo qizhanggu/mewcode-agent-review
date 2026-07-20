@@ -6,7 +6,7 @@
 
 ## 新增边界
 
-`mewcode/desktop/` 是与原 Coding Agent 并存的新包：
+`localdesk/desktop/` 是与原 Coding Agent 并存的新包：
 
 - `models.py`：Task、Action、Artifact、TraceEvent 和受限状态机。
 - `workspace.py`：绝对路径、资料只读根、可整理目录、产物输出目录、任务 Trace 目录。
@@ -21,7 +21,7 @@
 ## 当前可运行命令
 
 ```powershell
-python -m mewcode --desktop `
+python -m localdesk --desktop `
   --desktop-task "汇总会议纪要" `
   --desktop-read-root "D:\\demo\\notes" `
   --desktop-output-root "D:\\demo\\output" `

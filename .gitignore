@@ -7,6 +7,8 @@ dist/
 build/
 .idea/
 .vscode/
-.mewcode/
+.localdesk/*
+!.localdesk/
+!.localdesk/config.yaml.example
 .claude/
 CLAUDE.md

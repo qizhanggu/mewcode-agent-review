@@ -5,14 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from mewcode.desktop.policy import DesktopPolicyGuard
-from mewcode.desktop.cli import run_desktop_foundation
-from mewcode.desktop.reporting import KnowledgeReportWorkflow
-from mewcode.desktop.service import DesktopTaskService
-from mewcode.desktop.skills.document import DocumentSkill
-from mewcode.desktop.skills.knowledge import KnowledgeSkill
-from mewcode.desktop.trace_store import TaskTraceStore
-from mewcode.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
+from localdesk.desktop.policy import DesktopPolicyGuard
+from localdesk.desktop.cli import run_desktop_foundation
+from localdesk.desktop.reporting import KnowledgeReportWorkflow
+from localdesk.desktop.service import DesktopTaskService
+from localdesk.desktop.skills.document import DocumentSkill
+from localdesk.desktop.skills.knowledge import KnowledgeSkill
+from localdesk.desktop.trace_store import TaskTraceStore
+from localdesk.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
+from localdesk.desktop.browser import FakeBrowserAdapter, WebChunk
 
 
 @pytest.fixture
@@ -52,6 +53,9 @@ def test_search_to_staging_then_confirmed_delivery(workspace: DesktopWorkspace, 
     assert "knowledge_searched" in [event["event_type"] for event in events]
     assert "draft_staged" in [event["event_type"] for event in events]
     assert "artifact_committed" in [event["event_type"] for event in events]
+    assert {"tool_requested", "tool_policy_decided", "tool_completed", "tool_verified"}.issubset(
+        {event["event_type"] for event in events}
+    )
 
 
 def test_rejected_confirmation_never_writes_output(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
@@ -62,6 +66,19 @@ def test_rejected_confirmation_never_writes_output(workspace: DesktopWorkspace, 
     assert task.status.value == "cancelled"
     assert Path(draft.staged_path).exists()
     assert not Path(draft.final_path).exists()
+
+
+def test_authorized_web_evidence_is_reviewed_and_cited(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
+    workspace.browser_allowed_domains = ("jobs.example.com",)
+    (workspace.read_roots[0] / "resume.md").write_text("Agent project experience", encoding="utf-8")
+    url = "https://jobs.example.com/agent-role"
+    browser = FakeBrowserAdapter({url: WebChunk("web:role", url, "Agent Role", "Need Python and Agent workflow experience", "2026-07-20T00:00:00+00:00")})
+    task = workflow.service.create_task("compare Agent role requirements")
+    draft = workflow.prepare(task, "job-match.md", browser=browser, web_urls=[url])
+    content = Path(draft.staged_path).read_text(encoding="utf-8")
+    assert "Agent Role (https://jobs.example.com/agent-role" in content
+    events = workflow.service.trace_store.load_events(task.task_id)
+    assert any(event["event_type"] == "review_completed" and event["payload"]["approved"] for event in events)
 
 
 def test_changed_staging_invalidates_confirmation(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:

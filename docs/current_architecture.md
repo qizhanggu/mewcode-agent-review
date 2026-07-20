@@ -13,9 +13,9 @@
 ## 2. 一次任务的真实调用链
 
 ```text
-python -m mewcode / mewcode CLI
+python -m localdesk / localdesk CLI
   -> __main__.py: load_config()、PermissionChecker、create_default_registry()
-  -> app.py: MewCodeApp（Textual 输入、会话、确认弹窗、事件渲染）
+  -> app.py: LocalDeskApp（Textual 输入、会话、确认弹窗、事件渲染）
   -> ConversationManager: 维护用户消息和工具结果
   -> Agent.run(): 调用 LLM，流式接收文本/ToolUse，循环推进
   -> ToolRegistry: 根据工具名取 Tool，校验 Pydantic 参数
@@ -25,7 +25,7 @@ python -m mewcode / mewcode CLI
   -> session / context / filehistory: 保存会话、上下文和编辑备份
 ```
 
-核心循环位于 `mewcode/agent.py::Agent.run()`：模型提出工具调用，Agent 先经过权限检查，再执行工具，并将结果追加回对话；模型根据结果继续决策，直到完成或出错。这个“模型—工具—结果回流”的循环可以复用。
+核心循环位于 `localdesk/agent.py::Agent.run()`：模型提出工具调用，Agent 先经过权限检查，再执行工具，并将结果追加回对话；模型根据结果继续决策，直到完成或出错。这个“模型—工具—结果回流”的循环可以复用。
 
 ## 3. 主要模块及改造判断
 
@@ -52,8 +52,8 @@ python -m mewcode / mewcode CLI
 
 ## 5. 当前入口和配置边界
 
-- 入口：`mewcode/__main__.py`，当前 CLI 名、描述和数据目录均使用 `mewcode`。
-- 配置：`mewcode/config.py` 读取用户目录和工作目录下的 `.mewcode` 配置。
-- UI：`mewcode/app.py::MewCodeApp` 在运行期装配默认 Registry、MCP、Team、Worktree 等能力。
+- 入口：`localdesk/__main__.py`；重命名后 CLI 名、描述和运行数据目录均使用 `localdesk` / `.localdesk`。
+- 配置：`localdesk/config.py` 读取用户目录和工作目录下的 `.localdesk` 配置。
+- UI：`localdesk/app.py::LocalDeskApp` 在运行期装配默认 Registry、MCP、Team、Worktree 等能力。
 
-结论：第一步不全局重命名 `mewcode`。先增加独立 Desktop 入口/模式和独立 Registry，使两种模式能并存；待 v1 稳定后，再以兼容迁移的方式更换用户可见名称、CLI 名与配置目录。
+结论：本审计记录的是 MewCode 基线。LocalDesk 在后续重构中已完成用户可见名称、包名、CLI 和配置目录的统一迁移；Git 标签和来源说明仍保留 MewCode，以准确说明上游边界。

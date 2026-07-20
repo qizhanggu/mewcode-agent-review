@@ -23,9 +23,9 @@ python -m pytest -q tests/test_grounded_renderer.py tests/test_desktop_foundatio
 
 ## 已知失败与真实模型评估
 
-真实评估门槛尚未完成：运行 `load_config()` 返回 `ConfigError: No config file found`，当前项目目录和用户目录均没有 `.mewcode/config.yaml`，所以不存在可调用的 provider/API key。故以下真实模型指标均为**待补跑**，而非 0 或成功：引用有效率、结构化解析成功率、5–10 条任务成功率。
+真实评估门槛尚未完成：运行 `load_config()` 返回 `ConfigError: No config file found`，当前项目目录和用户目录均没有 `.localdesk/config.yaml`，所以不存在可调用的 provider/API key。故以下真实模型指标均为**待补跑**，而非 0 或成功：引用有效率、结构化解析成功率、5–10 条任务成功率。
 
-补跑方式：配置好既有 MewCode provider 后，使用 Phase 2 的两步命令并在第一步附加 `--desktop-grounded-llm`；使用 5–10 条无敏感样例任务，人工核验每段引用，再统计：
+补跑方式：配置好 LocalDesk provider 后，使用 Phase 2 的两步命令并在第一步附加 `--desktop-grounded-llm`；使用 5–10 条无敏感样例任务，人工核验每段引用，再统计：
 
 - Citation Validity = 合法 citation 引用数 / 全部 citation 引用数；
 - Structured Parse Success = 成功通过 Pydantic 与 citation 校验的任务数 / 总任务数；
@@ -33,7 +33,7 @@ python -m pytest -q tests/test_grounded_renderer.py tests/test_desktop_foundatio
 
 ## 需要你亲自验证的事项
 
-1. 在不提交 API key 到 Git 的前提下，配置现有 `.mewcode/config.yaml` 或环境变量。
+1. 在不提交 API key 到 Git 的前提下，配置现有 `.localdesk/config.yaml` 或环境变量。
 2. 用无敏感样例运行 `--desktop-grounded-llm`，检查第一次命令仅产生 staging 和 task_id；第二次 `--desktop-confirm-task` 才写 output。
 3. 留意生成报告每个 section 的 citation_id 是否真实、是否能在 Sources 中定位。
 

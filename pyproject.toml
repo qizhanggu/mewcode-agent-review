@@ -1,7 +1,7 @@
 [project]
-name = "mewcode"
+name = "localdesk"
 version = "0.2.0"
-description = "A terminal AI coding assistant"
+description = "A controlled local-first AI office agent"
 requires-python = ">=3.11"
 dependencies = [
     "textual>=2.1.0",
@@ -16,10 +16,10 @@ dependencies = [
 ]
 
 [project.scripts]
-mewcode = "mewcode.__main__:main"
+localdesk = "localdesk.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["mewcode"]
+packages = ["localdesk"]
 
 [build-system]
 requires = ["hatchling"]

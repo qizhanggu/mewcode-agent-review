@@ -14,7 +14,7 @@ $env:OPENAI_API_KEY = "你的 DeepSeek API Key"
 
 这只在当前终端窗口生效；关闭窗口后失效，不会写入 Git。
 
-然后在项目根目录新建 `.mewcode/config.local.yaml`（该目录已被 `.gitignore` 忽略），内容如下：
+然后在项目根目录新建 `.localdesk/config.local.yaml`（该目录已被 `.gitignore` 忽略），内容如下：
 
 ```yaml
 providers:
@@ -36,10 +36,10 @@ providers:
 
 ```powershell
 # 第一步：只生成 staging 草稿，不能写 output
-python -m mewcode --desktop --desktop-task "<任务描述>" --desktop-read-root "<构造资料目录>" --desktop-output-root "<空输出目录>" --desktop-task-root "<任务记录目录>" --desktop-report-name "report.md" --desktop-grounded-llm
+python -m localdesk --desktop --desktop-task "<任务描述>" --desktop-read-root "<构造资料目录>" --desktop-output-root "<空输出目录>" --desktop-task-root "<任务记录目录>" --desktop-report-name "report.md" --desktop-grounded-llm
 
 # 第二步：人工检查引用和草稿后，才确认交付
-python -m mewcode --desktop --desktop-read-root "<构造资料目录>" --desktop-output-root "<空输出目录>" --desktop-task-root "<任务记录目录>" --desktop-confirm-task <task_id>
+python -m localdesk --desktop --desktop-read-root "<构造资料目录>" --desktop-output-root "<空输出目录>" --desktop-task-root "<任务记录目录>" --desktop-confirm-task <task_id>
 ```
 
 每条任务记录：是否获得可解析结构化输出、所有 citation_id 是否来自本次检索、是否成功 staging、确认后是否交付到 output。汇总三个指标：

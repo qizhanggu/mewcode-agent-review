@@ -1,11 +1,11 @@
 from pathlib import Path
 import pytest
-from mewcode.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
-from mewcode.desktop.policy import DesktopPolicyGuard
-from mewcode.desktop.trace_store import TaskTraceStore
-from mewcode.desktop.service import DesktopTaskService, TaskStateError
-from mewcode.desktop.skills.files import FileSkill
-from mewcode.desktop.file_workflow import FileOrganizationWorkflow
+from localdesk.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
+from localdesk.desktop.policy import DesktopPolicyGuard
+from localdesk.desktop.trace_store import TaskTraceStore
+from localdesk.desktop.service import DesktopTaskService, TaskStateError
+from localdesk.desktop.skills.files import FileSkill
+from localdesk.desktop.file_workflow import FileOrganizationWorkflow
 
 @pytest.fixture
 def setup(tmp_path):

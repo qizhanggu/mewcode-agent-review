@@ -19,7 +19,7 @@ python -m pytest -q tests/test_file_workflow.py tests/test_desktop_foundation.py
 
 ## 真实 LLM 评估边界
 
-本机仍无 `.mewcode/config.yaml` provider，真实模型 5–10 条样例尚未运行。因此 Citation Validity、结构化解析成功率、端到端成功率均明确为待补，未填写任何虚假数值。配置已有 provider 后按 `phase25_acceptance.md` 补跑。
+本机仍无 `.localdesk/config.yaml` provider，真实模型 5–10 条样例尚未运行。因此 Citation Validity、结构化解析成功率、端到端成功率均明确为待补，未填写任何虚假数值。配置已有 provider 后按 `phase25_acceptance.md` 补跑。
 
 ## 文件整理边界
 

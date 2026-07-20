@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from mewcode.desktop.models import ActionKind, PlannedAction, TaskStatus
-from mewcode.desktop.cli import run_desktop_foundation
-from mewcode.desktop.policy import DesktopPolicyGuard
-from mewcode.desktop.registry import create_desktop_registry
-from mewcode.desktop.service import DesktopTaskService, TaskStateError
-from mewcode.desktop.trace_store import TaskTraceStore
-from mewcode.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
+from localdesk.desktop.models import ActionKind, PlannedAction, TaskStatus
+from localdesk.desktop.cli import run_desktop_foundation
+from localdesk.desktop.policy import DesktopPolicyGuard
+from localdesk.desktop.registry import create_desktop_registry
+from localdesk.desktop.service import DesktopTaskService, TaskStateError
+from localdesk.desktop.trace_store import TaskTraceStore
+from localdesk.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
 
 
 @pytest.fixture
@@ -165,6 +165,7 @@ def test_rejected_action_cannot_enter_execution(workspace: DesktopWorkspace, tmp
 def test_desktop_registry_does_not_leak_coding_tools() -> None:
     names = {tool.name for tool in create_desktop_registry().list_tools()}
     assert names.isdisjoint({"Bash", "WriteFile", "EditFile", "Agent", "TeamCreate"})
+    assert names == {"knowledge.search", "browser.open", "document.stage_markdown", "document.commit_markdown"}
 
 
 def test_desktop_cli_creates_trace_only(workspace: DesktopWorkspace, capsys: pytest.CaptureFixture[str]) -> None:
@@ -179,6 +180,6 @@ def test_desktop_cli_creates_trace_only(workspace: DesktopWorkspace, capsys: pyt
     )
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "desktop tools registered: 0" in output
+    assert "desktop tools registered: 4" in output
     assert "no file operation" in output
     assert len(list(workspace.task_root.iterdir())) == 1

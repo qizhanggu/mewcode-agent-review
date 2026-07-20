@@ -33,13 +33,13 @@ python -m pytest -q tests/test_desktop_foundation.py tests/test_desktop_reportin
 用**无敏感数据**的两个绝对路径目录（例如 `D:\\demo\\notes`、`D:\\demo\\output`）执行：
 
 ```powershell
-python -m mewcode --desktop --desktop-task "汇总本周会议纪要" --desktop-read-root "D:\\demo\\notes" --desktop-output-root "D:\\demo\\output" --desktop-task-root "D:\\demo\\localdesk-tasks" --desktop-report-name "weekly.md"
+python -m localdesk --desktop --desktop-task "汇总本周会议纪要" --desktop-read-root "D:\\demo\\notes" --desktop-output-root "D:\\demo\\output" --desktop-task-root "D:\\demo\\localdesk-tasks" --desktop-report-name "weekly.md"
 ```
 
 检查：output 中尚未出现 `weekly.md`；查看命令输出的 staging 路径和 task_id，确认引用是否符合预期。确认后再运行：
 
 ```powershell
-python -m mewcode --desktop --desktop-read-root "D:\\demo\\notes" --desktop-output-root "D:\\demo\\output" --desktop-task-root "D:\\demo\\localdesk-tasks" --desktop-confirm-task <task_id>
+python -m localdesk --desktop --desktop-read-root "D:\\demo\\notes" --desktop-output-root "D:\\demo\\output" --desktop-task-root "D:\\demo\\localdesk-tasks" --desktop-confirm-task <task_id>
 ```
 
 检查：`weekly.md` 才出现在 output，且 `events.jsonl` 含 `knowledge_searched`、`draft_staged`、`confirmation`、`artifact_committed`。

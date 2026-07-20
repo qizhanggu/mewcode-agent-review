@@ -37,7 +37,7 @@ python -m pytest -q -p no:cacheprovider --basetemp .pytest-basetemp
 |---|---|---|
 | 取消时序 | `tests/test_agent.py::test_stop_cancel` | 测试假定 0.15 秒内至少完成一次 turn；当前机器调度/依赖版本下未满足该时序，属于脆弱测试。 |
 | Windows 命令差异 | `tests/test_hooks.py::TestCommandExecutor::test_timeout` | 用例调用 Unix 命令 `sleep 10`，Windows 中不存在该命令，未真正覆盖 timeout。 |
-| 测试目录层级假设 | `tests/test_memory.py::TestLoadInstructions::test_no_files_returns_empty` | 基于仓库内临时目录运行时，向上查找命中了仓库根的 `MEWCODE.md`；测试假定临时目录不在项目树下。 |
+| 测试目录层级假设 | `tests/test_memory.py::TestLoadInstructions::test_no_files_returns_empty` | 基于仓库内临时目录运行时，向上查找命中了仓库根的 `LOCALDESK.md`；测试假定临时目录不在项目树下。 |
 | 返回值契约不一致 | `tests/test_replacement_state.py` 的 5 个用例 | 测试按 `(api_conversation, records)` 解包，当前 `apply_tool_result_budget()` 返回记录列表，属于代码与测试快照未同步。 |
 
 ## 可作为后续回归门槛的结论
@@ -51,8 +51,8 @@ python -m pytest -q -p no:cacheprovider --basetemp .pytest-basetemp
 在主机 Python 3.12.7 环境执行：
 
 ```powershell
-python -m mewcode --help
-python -c "from mewcode.tools import create_default_registry; ..."
+python -m localdesk --help
+python -c "from localdesk.tools import create_default_registry; ..."
 ```
 
 结果：CLI 帮助可正常输出；当前默认 Registry 为

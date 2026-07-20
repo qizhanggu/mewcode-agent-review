@@ -1,0 +1,183 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
+
+from localdesk.desktop.models import ActionKind, PlannedAction, Task, TaskStatus
+from localdesk.desktop.service import DesktopTaskService
+
+
+class KnowledgeSearchParams(BaseModel):
+    path: str
+    query: str
+
+
+class BrowserOpenParams(BaseModel):
+    url: str
+
+
+class StageMarkdownParams(BaseModel):
+    destination: str
+
+
+class CommitMarkdownParams(BaseModel):
+    destination: str
+
+
+@dataclass(frozen=True)
+class DesktopToolDefinition:
+    """受控 Desktop Tool 的静态元数据。
+
+    这不是旧 Coding Agent 的 Tool；它声明一项办公动作必须具备的安全和
+    运行属性，实际调用一律由 DesktopToolRegistry 统一编排。
+    """
+
+    name: str
+    description: str
+    params_model: type[BaseModel]
+    action_kind: ActionKind
+    risk_level: str
+    read_only: bool
+    side_effect: bool
+    idempotent: bool
+    retryable: bool
+    timeout_seconds: int
+
+
+class DesktopToolExecutionError(RuntimeError):
+    pass
+
+
+ResultT = TypeVar("ResultT")
+
+
+class DesktopToolRegistry:
+    """唯一允许 Desktop workflow 调用受控能力的入口。"""
+
+    def __init__(self, service: DesktopTaskService | None = None) -> None:
+        self.service = service
+        self._tools: dict[str, DesktopToolDefinition] = {}
+
+    def register(self, definition: DesktopToolDefinition) -> None:
+        if definition.name in self._tools:
+            raise ValueError(f"Desktop tool already registered: {definition.name}")
+        self._tools[definition.name] = definition
+
+    def get(self, name: str) -> DesktopToolDefinition | None:
+        return self._tools.get(name)
+
+    def list_tools(self) -> list[DesktopToolDefinition]:
+        return list(self._tools.values())
+
+    def execute(
+        self,
+        task: Task,
+        action: PlannedAction,
+        callback: Callable[[], ResultT],
+        verify: Callable[[ResultT], bool] | None = None,
+    ) -> ResultT:
+        """执行一个已声明动作，并写入策略、执行和验证 Trace。"""
+
+        if self.service is None:
+            raise DesktopToolExecutionError("Desktop registry has no task service")
+        if task.status in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+            raise DesktopToolExecutionError("Terminal task cannot execute a tool")
+
+        definition = self.get(action.skill)
+        if definition is None:
+            raise DesktopToolExecutionError(f"Desktop tool is not registered: {action.skill}")
+        if action.kind != definition.action_kind:
+            raise DesktopToolExecutionError(f"Tool action kind mismatch: {action.skill}")
+
+        try:
+            validated = definition.params_model.model_validate(action.args)
+        except Exception as exc:
+            self.service.trace_store.append(task.task_id, "tool_schema_rejected", {"tool": action.skill, "error": str(exc)})
+            raise DesktopToolExecutionError(f"Tool parameter validation failed: {action.skill}") from exc
+
+        decision = self.service.policy.evaluate(action)
+        payload = {
+            "tool": definition.name,
+            "action_id": action.action_id,
+            "risk_level": definition.risk_level,
+            "params": validated.model_dump(mode="json"),
+            "decision": decision.__dict__,
+        }
+        self.service.trace_store.append(task.task_id, "tool_requested", payload)
+        self.service.trace_store.append(task.task_id, "tool_policy_decided", payload)
+        if decision.effect == "deny":
+            self.service.trace_store.append(task.task_id, "tool_blocked", payload)
+            raise DesktopToolExecutionError(decision.reason)
+        if decision.requires_confirmation and task.status != TaskStatus.EXECUTING:
+            self.service.trace_store.append(task.task_id, "tool_awaiting_approval", payload)
+            raise DesktopToolExecutionError("Tool requires an approved executing task")
+
+        try:
+            result = callback()
+        except Exception as exc:
+            self.service.trace_store.append(task.task_id, "tool_failed", {"tool": definition.name, "action_id": action.action_id, "error": str(exc)})
+            raise
+
+        self.service.trace_store.append(task.task_id, "tool_completed", {"tool": definition.name, "action_id": action.action_id})
+        if verify is not None and not verify(result):
+            self.service.trace_store.append(task.task_id, "tool_verification_failed", {"tool": definition.name, "action_id": action.action_id})
+            raise DesktopToolExecutionError(f"Postcondition verification failed: {action.skill}")
+        if verify is not None:
+            self.service.trace_store.append(task.task_id, "tool_verified", {"tool": definition.name, "action_id": action.action_id})
+        return result
+
+
+def create_desktop_registry(service: DesktopTaskService | None = None) -> DesktopToolRegistry:
+    registry = DesktopToolRegistry(service)
+    registry.register(DesktopToolDefinition(
+        name="knowledge.search",
+        description="在用户授权的本地资料根目录检索可引用片段。",
+        params_model=KnowledgeSearchParams,
+        action_kind=ActionKind.READ,
+        risk_level="R0",
+        read_only=True,
+        side_effect=False,
+        idempotent=True,
+        retryable=True,
+        timeout_seconds=30,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="browser.open",
+        description="读取用户授权域名内的公开 HTTPS 页面，不登录、不提交表单。",
+        params_model=BrowserOpenParams,
+        action_kind=ActionKind.NAVIGATE,
+        risk_level="R1",
+        read_only=True,
+        side_effect=False,
+        idempotent=True,
+        retryable=True,
+        timeout_seconds=20,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="document.stage_markdown",
+        description="只向任务 staging 写入带引用的 Markdown 草稿。",
+        params_model=StageMarkdownParams,
+        action_kind=ActionKind.WRITE,
+        risk_level="R2",
+        read_only=False,
+        side_effect=True,
+        idempotent=False,
+        retryable=False,
+        timeout_seconds=30,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="document.commit_markdown",
+        description="将经批准且哈希未变化的 staging Markdown 交付到 output。",
+        params_model=CommitMarkdownParams,
+        action_kind=ActionKind.WRITE,
+        risk_level="R3",
+        read_only=False,
+        side_effect=True,
+        idempotent=False,
+        retryable=False,
+        timeout_seconds=30,
+    ))
+    return registry
