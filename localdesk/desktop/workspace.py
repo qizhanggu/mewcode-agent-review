@@ -22,6 +22,7 @@ class WorkspaceConfig:
     task_root: Path
     managed_roots: list[Path] = field(default_factory=list)
     browser_allowed_domains: list[str] = field(default_factory=list)
+    desktop_allowed_window_titles: list[str] = field(default_factory=list)
 
 
 class DesktopWorkspace:
@@ -31,6 +32,7 @@ class DesktopWorkspace:
         self.output_root = self._resolve_root(config.output_root, "output_root")
         self.task_root = self._resolve_root(config.task_root, "task_root")
         self.browser_allowed_domains = self._normalize_domains(config.browser_allowed_domains)
+        self.desktop_allowed_window_titles = tuple(title.strip() for title in config.desktop_allowed_window_titles if title.strip())
 
     @staticmethod
     def _normalize_domains(domains: list[str]) -> tuple[str, ...]:
@@ -96,6 +98,9 @@ class DesktopWorkspace:
         if parsed.scheme != "https" or not host:
             return False
         return any(host == domain or host.endswith("." + domain) for domain in self.browser_allowed_domains)
+
+    def can_automate_window(self, title: str) -> bool:
+        return title in self.desktop_allowed_window_titles
 
     def task_dir(self, task_id: str) -> Path:
         if not task_id or any(char in task_id for char in "\\/:"):

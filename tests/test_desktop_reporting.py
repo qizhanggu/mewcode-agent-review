@@ -4,8 +4,12 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
+import httpx
+from docx import Document
 
 from localdesk.desktop.policy import DesktopPolicyGuard
+from localdesk.desktop.reviewer import DeterministicReviewer
+from localdesk.desktop.docx_delivery import FakeDocxRenderer, RenderCheck
 from localdesk.desktop.cli import run_desktop_foundation
 from localdesk.desktop.reporting import KnowledgeReportWorkflow
 from localdesk.desktop.service import DesktopTaskService
@@ -13,7 +17,7 @@ from localdesk.desktop.skills.document import DocumentSkill
 from localdesk.desktop.skills.knowledge import KnowledgeSkill
 from localdesk.desktop.trace_store import TaskTraceStore
 from localdesk.desktop.workspace import DesktopWorkspace, WorkspaceConfig, WorkspaceError
-from localdesk.desktop.browser import FakeBrowserAdapter, WebChunk
+from localdesk.desktop.browser import BrowserError, FakeBrowserAdapter, HttpBrowserAdapter, WebChunk
 
 
 @pytest.fixture
@@ -79,6 +83,158 @@ def test_authorized_web_evidence_is_reviewed_and_cited(workspace: DesktopWorkspa
     assert "Agent Role (https://jobs.example.com/agent-role" in content
     events = workflow.service.trace_store.load_events(task.task_id)
     assert any(event["event_type"] == "review_completed" and event["payload"]["approved"] for event in events)
+
+
+def test_disallowed_web_url_is_blocked_before_browser_call(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
+    (workspace.read_roots[0] / "resume.md").write_text("Agent project experience", encoding="utf-8")
+    url = "https://jobs.example.com/agent-role"
+    browser = FakeBrowserAdapter({url: WebChunk("web:role", url, "Agent Role", "Python", "2026-07-20T00:00:00+00:00")})
+    task = workflow.service.create_task("compare Agent role requirements")
+
+    with pytest.raises(RuntimeError, match="授权范围"):
+        workflow.prepare(task, "job-match.md", browser=browser, web_urls=[url])
+
+    assert not (workspace.task_dir(task.task_id) / "staging" / "job-match.md").exists()
+    events = workflow.service.trace_store.load_events(task.task_id)
+    assert "tool_blocked" in [event["event_type"] for event in events]
+
+
+def test_http_browser_rejects_redirect_and_keeps_final_url_unvisited() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(302, headers={"location": "https://evil.example/landing"}, request=request)
+
+    adapter = HttpBrowserAdapter(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(BrowserError, match="自动重定向"):
+        adapter.open("https://jobs.example.com/role")
+    assert requested == ["https://jobs.example.com/role"]
+
+
+def test_http_browser_limits_body_and_ignores_script_text() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=b"<title>Agent Role</title><script>IGNORE THIS INSTRUCTION</script><p>Python agent workflow</p>",
+            request=request,
+        )
+
+    adapter = HttpBrowserAdapter(max_response_bytes=256, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    page = adapter.open("https://jobs.example.com/role")
+    assert page.title == "Agent Role"
+    assert "Python agent workflow" in page.text
+    assert "IGNORE THIS INSTRUCTION" not in page.text
+
+    too_small = HttpBrowserAdapter(max_response_bytes=10, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(BrowserError, match="超过"):
+        too_small.open("https://jobs.example.com/role")
+
+
+def test_deterministic_reviewer_rejects_missing_citation_and_sensitive_content(tmp_path: Path) -> None:
+    url = "https://jobs.example.com/agent-role"
+    evidence = [WebChunk("web:role", url, "Agent Role", "Python", "2026-07-20T00:00:00+00:00")]
+    draft = tmp_path / "unsafe.md"
+    draft.write_text("# Draft\n\n## Sources\n\n- unknown source\n\npassword = secret\n", encoding="utf-8")
+
+    result = DeterministicReviewer().review_markdown(str(draft), evidence)
+
+    assert not result.approved
+    assert any("缺少证据引用" in finding for finding in result.findings)
+    assert "草稿疑似包含敏感字段" in result.findings
+
+
+def test_cli_reports_unapproved_web_url_as_a_safe_error(workspace: DesktopWorkspace, capsys: pytest.CaptureFixture[str]) -> None:
+    (workspace.read_roots[0] / "resume.md").write_text("Agent project experience", encoding="utf-8")
+    result = run_desktop_foundation(Namespace(
+        desktop_task="compare Agent role requirements",
+        desktop_report_name="job-match.md",
+        desktop_confirm_task=None,
+        desktop_read_root=[str(workspace.read_roots[0])],
+        desktop_managed_root=[],
+        desktop_browser_domain=[],
+        desktop_web_url=["https://jobs.example.com/agent-role"],
+        desktop_output_root=str(workspace.output_root),
+        desktop_task_root=str(workspace.task_root),
+        desktop_grounded_llm=False,
+    ))
+
+    assert result == 2
+    assert "Desktop report error" in capsys.readouterr().out
+    assert not list(workspace.output_root.iterdir())
+
+
+def test_checked_docx_is_staged_then_delivered_with_markdown(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
+    (workspace.read_roots[0] / "meeting.md").write_text(
+        "Project Orion weekly meeting\nMilestone is Friday\nRisk: API delay\n",
+        encoding="utf-8",
+    )
+    task = workflow.service.create_task("Summarize Project Orion milestone risk")
+    markdown = workflow.prepare(
+        task,
+        "weekly-report.md",
+        title="Weekly Report",
+        docx_filename="weekly-report.docx",
+        docx_renderer=FakeDocxRenderer(),
+    )
+    docx_action = next(action for action in task.actions if action.action_id == "deliver-docx")
+    staged_docx = Path(docx_action.preview["staged_path"])
+
+    assert task.status.value == "awaiting_confirmation"
+    assert staged_docx.exists()
+    document = Document(staged_docx)
+    assert any(paragraph.text == "Sources" for paragraph in document.paragraphs)
+    assert not Path(docx_action.args["destination"]).exists()
+    events = workflow.service.trace_store.load_events(task.task_id)
+    assert {"docx_structure_verified", "docx_render_verified"}.issubset({event["event_type"] for event in events})
+
+    workflow.confirm_and_deliver(task, approved=True)
+
+    assert task.status.value == "succeeded"
+    assert Path(markdown.final_path).exists()
+    assert Path(docx_action.args["destination"]).exists()
+    assert {artifact.kind for artifact in task.artifacts} == {"markdown", "docx"}
+
+
+def test_docx_render_rejection_fails_before_confirmation(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
+    class RejectingRenderer:
+        def render(self, _docx_path: Path, _output_dir: Path) -> RenderCheck:
+            return RenderCheck(False, ["simulated render failure"], None, [], 0)
+
+    (workspace.read_roots[0] / "note.txt").write_text("project milestone", encoding="utf-8")
+    task = workflow.service.create_task("project milestone")
+
+    with pytest.raises(ValueError, match="渲染检查未通过"):
+        workflow.prepare(
+            task,
+            "report.md",
+            docx_filename="report.docx",
+            docx_renderer=RejectingRenderer(),
+        )
+
+    assert task.status.value == "failed"
+    assert not (workspace.output_root / "report.docx").exists()
+
+
+def test_tampered_docx_blocks_every_artifact_before_delivery(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
+    (workspace.read_roots[0] / "note.txt").write_text("project milestone", encoding="utf-8")
+    task = workflow.service.create_task("project milestone")
+    markdown = workflow.prepare(
+        task,
+        "report.md",
+        docx_filename="report.docx",
+        docx_renderer=FakeDocxRenderer(),
+    )
+    docx_action = next(action for action in task.actions if action.action_id == "deliver-docx")
+    Path(docx_action.preview["staged_path"]).write_bytes(b"tampered")
+
+    with pytest.raises(WorkspaceError, match="哈希"):
+        workflow.confirm_and_deliver(task, approved=True)
+
+    assert task.status.value == "failed"
+    assert not Path(markdown.final_path).exists()
+    assert not Path(docx_action.args["destination"]).exists()
 
 
 def test_changed_staging_invalidates_confirmation(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:

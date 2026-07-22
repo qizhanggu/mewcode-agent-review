@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from localdesk.desktop.models import ActionKind, Artifact, PlannedAction, Task, TaskStatus
+from localdesk.desktop.docx_delivery import DocxRenderer, DocumentDeliverySkill, StagedDocx
 from localdesk.desktop.grounded_renderer import GroundedLLMRenderer, GroundedRenderError
 from localdesk.desktop.registry import DesktopToolRegistry, create_desktop_registry
 from localdesk.desktop.reviewer import DeterministicReviewer
@@ -23,6 +24,7 @@ class KnowledgeReportWorkflow:
         self.service = service
         self.knowledge = knowledge
         self.document = document
+        self.docx = DocumentDeliverySkill(knowledge.workspace)
         self.registry = registry or create_desktop_registry(service)
 
     def prepare(
@@ -32,6 +34,8 @@ class KnowledgeReportWorkflow:
         title: str | None = None,
         browser: "BrowserAdapter | None" = None,
         web_urls: list[str] | None = None,
+        docx_filename: str | None = None,
+        docx_renderer: DocxRenderer | None = None,
     ) -> StagedDraft:
         if task.status != TaskStatus.DRAFT:
             raise TaskStateError("只有 draft 任务可以准备报告")
@@ -84,7 +88,7 @@ class KnowledgeReportWorkflow:
         if not review.approved:
             self.service.fail(task, "; ".join(review.findings), event_type="review_rejected")
             raise TaskStateError("草稿未通过确定性 Reviewer")
-        action = PlannedAction(
+        actions = [PlannedAction(
             action_id="deliver-markdown",
             skill="document.commit_markdown",
             kind=ActionKind.WRITE,
@@ -96,8 +100,47 @@ class KnowledgeReportWorkflow:
                 "citations": draft.source_citations,
                 "indexed_chunks": indexed,
             },
-        )
-        self.service.set_plan(task, "检索授权资料并生成 Markdown 草稿；确认后交付到 output。", [action])
+        )]
+        if docx_filename:
+            if docx_renderer is None:
+                self.service.fail(task, "DOCX 交付需要可用的渲染检查器", event_type="docx_render_unavailable")
+                raise TaskStateError("DOCX 交付需要可用的渲染检查器")
+            docx_staged_path = self.knowledge.workspace.task_dir(task.task_id) / "staging" / docx_filename
+            stage_docx_action = PlannedAction(
+                action_id="stage-docx",
+                skill="document.stage_docx",
+                kind=ActionKind.WRITE,
+                args={"destination": str(docx_staged_path), "source_markdown": draft.staged_path},
+                summary="将经过引用审查的 Markdown 转为 DOCX，并完成结构与渲染检查",
+            )
+            try:
+                docx_draft = self.registry.execute(
+                    task,
+                    stage_docx_action,
+                    lambda: self.docx.stage_docx(task.task_id, draft.staged_path, docx_filename, docx_renderer),
+                    verify=lambda result: result.structure.approved and result.render.approved and Path(result.staged_path).exists(),
+                )
+            except Exception as exc:
+                self.service.fail(task, str(exc), event_type="docx_staging_failed")
+                raise
+            self.service.trace_store.append(task.task_id, "docx_structure_verified", docx_draft.structure.__dict__)
+            self.service.trace_store.append(task.task_id, "docx_render_verified", docx_draft.render.__dict__)
+            actions.append(PlannedAction(
+                action_id="deliver-docx",
+                skill="document.commit_docx",
+                kind=ActionKind.WRITE,
+                args={"destination": docx_draft.final_path},
+                summary="确认后将已检查的 staging DOCX 交付到 output 目录",
+                preview={
+                    "staged_path": docx_draft.staged_path,
+                    "sha256": docx_draft.sha256,
+                    "artifact_kind": "docx",
+                    "source_markdown": docx_draft.source_markdown,
+                    "structure": docx_draft.structure.__dict__,
+                    "render": docx_draft.render.__dict__,
+                },
+            ))
+        self.service.set_plan(task, "检索授权资料并生成 Markdown 草稿；DOCX 需通过结构与渲染检查；确认后交付到 output。", actions)
         self.service.trace_store.append(task.task_id, "knowledge_searched", {"query": task.user_query, "indexed_chunks": indexed, "citations": draft.source_citations})
         self.service.trace_store.append(task.task_id, "draft_staged", asdict(draft))
         return draft
@@ -131,38 +174,45 @@ class KnowledgeReportWorkflow:
         self.service.confirm(task, approved)
         if not approved:
             return
-        action = self._delivery_action(task)
-        preview = action.preview
-        draft = StagedDraft(
-            staged_path=preview["staged_path"],
-            final_path=action.args["destination"],
-            sha256=preview["sha256"],
-            source_citations=preview["citations"],
-            summary="确认后的 Markdown 交付",
-        )
+        actions = self._delivery_actions(task)
         try:
-            self.registry.execute(
-                task,
-                action,
-                lambda: self.document.commit(draft),
-                verify=lambda _result: Path(draft.final_path).exists(),
-            )
+            deliveries = []
+            for action in actions:
+                preview = action.preview
+                draft = StagedDraft(
+                    staged_path=preview["staged_path"],
+                    final_path=action.args["destination"],
+                    sha256=preview["sha256"],
+                    source_citations=preview.get("citations", []),
+                    summary="确认后的交付",
+                )
+                self.document.validate_commit(draft)
+                deliveries.append((action, draft))
+            self.service.trace_store.append(task.task_id, "delivery_preflight_verified", {"artifact_count": len(deliveries)})
+            for action, draft in deliveries:
+                preview = action.preview
+                self.registry.execute(
+                    task,
+                    action,
+                    lambda draft=draft: self.document.commit(draft),
+                    verify=lambda _result, draft=draft: Path(draft.final_path).exists(),
+                )
+                action.status = "succeeded"
+                self.service.add_artifact(task, Artifact(
+                    kind=preview.get("artifact_kind", "markdown"),
+                    staged_path=draft.staged_path,
+                    final_path=draft.final_path,
+                    sha256=draft.sha256,
+                    summary=draft.summary,
+                ))
         except Exception as exc:
             self.service.finish(task, error=str(exc))
             raise
-        action.status = "succeeded"
-        self.service.add_artifact(task, Artifact(
-            kind="markdown",
-            staged_path=draft.staged_path,
-            final_path=draft.final_path,
-            sha256=draft.sha256,
-            summary=draft.summary,
-        ))
         self.service.finish(task)
 
     @staticmethod
-    def _delivery_action(task: Task) -> PlannedAction:
-        for action in task.actions:
-            if action.action_id == "deliver-markdown":
-                return action
-        raise TaskStateError("任务中不存在 Markdown 交付动作")
+    def _delivery_actions(task: Task) -> list[PlannedAction]:
+        actions = [action for action in task.actions if action.action_id in {"deliver-markdown", "deliver-docx"}]
+        if not actions:
+            raise TaskStateError("任务中不存在可交付动作")
+        return actions

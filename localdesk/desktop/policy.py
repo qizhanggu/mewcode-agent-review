@@ -32,6 +32,8 @@ class DesktopPolicyGuard:
                 return self._evaluate_read(action.args)
             if action.kind == ActionKind.NAVIGATE:
                 return self._evaluate_navigation(action.args)
+            if action.kind == ActionKind.DESKTOP:
+                return self._evaluate_desktop(action)
             if action.kind == ActionKind.WRITE:
                 return self._evaluate_write(action.args)
             if action.kind in {ActionKind.MOVE, ActionKind.RENAME}:
@@ -39,6 +41,18 @@ class DesktopPolicyGuard:
         except WorkspaceError as exc:
             return PolicyDecision("deny", str(exc))
         return PolicyDecision("deny", f"未知或未实现的动作类型: {action.kind.value}")
+
+    def _evaluate_desktop(self, action: PlannedAction) -> PolicyDecision:
+        title = action.args.get("window_title")
+        if not isinstance(title, str) or not title.strip():
+            return PolicyDecision("deny", "缺少受控窗口标题")
+        if not self.workspace.can_automate_window(title):
+            return PolicyDecision("deny", f"桌面窗口不在白名单: {title}")
+        if action.skill == "desktop.uia.observe":
+            return PolicyDecision("allow", "允许读取白名单测试窗口的 UIA 状态")
+        if action.skill in {"desktop.uia.set_text", "desktop.uia.invoke", "desktop.visual_fallback"}:
+            return PolicyDecision("ask", "桌面输入或点击需要用户确认", requires_confirmation=True)
+        return PolicyDecision("deny", f"未注册的桌面动作: {action.skill}")
 
     def _evaluate_navigation(self, args: dict[str, Any]) -> PolicyDecision:
         url = args.get("url")
@@ -71,8 +85,8 @@ class DesktopPolicyGuard:
             return PolicyDecision("deny", f"{kind.value} 源路径不在可整理目录: {source}")
         if not self.workspace.can_manage(destination):
             return PolicyDecision("deny", f"{kind.value} 目标路径不在可整理目录: {destination}")
-        if Path(destination).exists():
-            return PolicyDecision("deny", f"禁止覆盖已有文件: {destination}")
+        # 目标是否已在预览后出现属于 TOCTOU 竞态；最终执行前必须由 FileSkill
+        # 在同一条 journal 事务中复核并拒绝，避免“被拦截但没有失败记录”。
         return PolicyDecision("ask", f"{kind.value} 需要用户确认", requires_confirmation=True)
 
     @staticmethod

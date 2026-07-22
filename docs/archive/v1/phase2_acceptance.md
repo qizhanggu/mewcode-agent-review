@@ -24,7 +24,7 @@ python -m pytest -q tests/test_desktop_foundation.py tests/test_desktop_reportin
 ## 3. 已知失败与限制
 
 - 本阶段新增测试无失败。
-- 原 Coding Agent 基线仍有 8 个已知失败（Windows `sleep`、时序、测试与代码快照契约不一致），详见 `docs/baseline_validation.md`；与本阶段无关。
+- 原 Coding Agent 基线仍有 8 个已知失败（Windows `sleep`、时序、测试与代码快照契约不一致），详见 [基线验证](baseline_validation.md)；与本阶段无关。
 - PDF 只支持可提取文本；扫描件/OCR、复杂表格/版式理解不在本阶段范围。
 - 当前报告是确定性的“引用驱动资料摘要”，尚未接入 LLM 润色/改写；这保证了无 API 的可复现验收，但不是最终的智能写作体验。
 

@@ -165,7 +165,21 @@ def test_rejected_action_cannot_enter_execution(workspace: DesktopWorkspace, tmp
 def test_desktop_registry_does_not_leak_coding_tools() -> None:
     names = {tool.name for tool in create_desktop_registry().list_tools()}
     assert names.isdisjoint({"Bash", "WriteFile", "EditFile", "Agent", "TeamCreate"})
-    assert names == {"knowledge.search", "browser.open", "document.stage_markdown", "document.commit_markdown"}
+    assert names == {
+        "knowledge.search",
+        "browser.open",
+        "document.stage_markdown",
+        "document.commit_markdown",
+        "document.stage_docx",
+        "document.commit_docx",
+        "files.scan",
+        "files.move",
+        "files.rollback_move",
+        "desktop.uia.observe",
+        "desktop.uia.set_text",
+        "desktop.uia.invoke",
+        "desktop.visual_fallback",
+    }
 
 
 def test_desktop_cli_creates_trace_only(workspace: DesktopWorkspace, capsys: pytest.CaptureFixture[str]) -> None:
@@ -180,6 +194,6 @@ def test_desktop_cli_creates_trace_only(workspace: DesktopWorkspace, capsys: pyt
     )
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "desktop tools registered: 4" in output
+    assert "desktop tools registered: 13" in output
     assert "no file operation" in output
     assert len(list(workspace.task_root.iterdir())) == 1

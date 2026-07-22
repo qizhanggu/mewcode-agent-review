@@ -37,6 +37,14 @@ class DocumentSkill:
         return StagedDraft(str(staged), str(final), _sha256(staged), [chunk.citation() for chunk in chunks], f"基于 {len(chunks)} 个可定位资料片段生成 Markdown 草稿")
 
     def commit(self, draft: StagedDraft) -> None:
+        self.validate_commit(draft)
+        staged, final = Path(draft.staged_path), Path(draft.final_path)
+        final.parent.mkdir(parents=True, exist_ok=True)
+        temporary = final.with_suffix(final.suffix + ".tmp")
+        temporary.write_bytes(staged.read_bytes())
+        os.replace(temporary, final)
+
+    def validate_commit(self, draft: StagedDraft) -> None:
         staged, final = Path(draft.staged_path), Path(draft.final_path)
         if not self.workspace.can_write_artifact(staged) or not self.workspace.can_write_artifact(final):
             raise WorkspaceError("草稿或交付目标超出允许写入范围")
@@ -46,10 +54,6 @@ class DocumentSkill:
             raise WorkspaceError("staging 草稿哈希已变化，确认失效")
         if final.exists():
             raise WorkspaceError(f"禁止覆盖已有文件: {final}")
-        final.parent.mkdir(parents=True, exist_ok=True)
-        temporary = final.with_suffix(final.suffix + ".tmp")
-        temporary.write_bytes(staged.read_bytes())
-        os.replace(temporary, final)
 
     def stage_grounded_markdown(self, task_id: str, query: str, report: GroundedReport, chunks: list[SourceChunk], filename: str) -> StagedDraft:
         by_id = {chunk.chunk_id: chunk for chunk in chunks}

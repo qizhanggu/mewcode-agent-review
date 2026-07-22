@@ -27,6 +27,46 @@ class CommitMarkdownParams(BaseModel):
     destination: str
 
 
+class StageDocxParams(BaseModel):
+    destination: str
+    source_markdown: str
+
+
+class CommitDocxParams(BaseModel):
+    destination: str
+
+
+class FileScanParams(BaseModel):
+    path: str
+
+
+class FileMoveParams(BaseModel):
+    source: str
+    destination: str
+
+
+class DesktopObserveParams(BaseModel):
+    window_title: str
+
+
+class DesktopTextParams(BaseModel):
+    window_title: str
+    control: str
+    text: str
+
+
+class DesktopInvokeParams(BaseModel):
+    window_title: str
+    control: str
+
+
+class DesktopFallbackParams(BaseModel):
+    window_title: str
+    x: int
+    y: int
+    screen_hash: str
+
+
 @dataclass(frozen=True)
 class DesktopToolDefinition:
     """受控 Desktop Tool 的静态元数据。
@@ -180,4 +220,68 @@ def create_desktop_registry(service: DesktopTaskService | None = None) -> Deskto
         retryable=False,
         timeout_seconds=30,
     ))
+    registry.register(DesktopToolDefinition(
+        name="document.stage_docx",
+        description="将已通过引用审查的 Markdown 转为 DOCX，并完成结构与渲染检查后存入任务 staging。",
+        params_model=StageDocxParams,
+        action_kind=ActionKind.WRITE,
+        risk_level="R2",
+        read_only=False,
+        side_effect=True,
+        idempotent=False,
+        retryable=False,
+        timeout_seconds=120,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="document.commit_docx",
+        description="将已通过哈希复核的 staging DOCX 交付到 output 目录。",
+        params_model=CommitDocxParams,
+        action_kind=ActionKind.WRITE,
+        risk_level="R3",
+        read_only=False,
+        side_effect=True,
+        idempotent=False,
+        retryable=False,
+        timeout_seconds=30,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="files.scan",
+        description="扫描用户授权的整理目录，仅返回文件清单、分类建议与冲突。",
+        params_model=FileScanParams,
+        action_kind=ActionKind.READ,
+        risk_level="R0",
+        read_only=True,
+        side_effect=False,
+        idempotent=True,
+        retryable=True,
+        timeout_seconds=30,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="files.move",
+        description="在同一用户授权整理目录内移动一个已预览、未冲突的普通文件。",
+        params_model=FileMoveParams,
+        action_kind=ActionKind.MOVE,
+        risk_level="R3",
+        read_only=False,
+        side_effect=True,
+        idempotent=False,
+        retryable=False,
+        timeout_seconds=30,
+    ))
+    registry.register(DesktopToolDefinition(
+        name="files.rollback_move",
+        description="将已成功的受控文件移动按 journal 逆序回滚；仍需独立确认。",
+        params_model=FileMoveParams,
+        action_kind=ActionKind.MOVE,
+        risk_level="R3",
+        read_only=False,
+        side_effect=True,
+        idempotent=False,
+        retryable=False,
+        timeout_seconds=30,
+    ))
+    registry.register(DesktopToolDefinition("desktop.uia.observe", "读取白名单测试窗口的 UI Automation 状态。", DesktopObserveParams, ActionKind.DESKTOP, "R0", True, False, True, True, 15))
+    registry.register(DesktopToolDefinition("desktop.uia.set_text", "向白名单测试窗口的已识别 Edit 控件写入文本。", DesktopTextParams, ActionKind.DESKTOP, "R2", False, True, False, False, 15))
+    registry.register(DesktopToolDefinition("desktop.uia.invoke", "调用白名单测试窗口的已识别低风险 Button 控件。", DesktopInvokeParams, ActionKind.DESKTOP, "R2", False, True, False, False, 15))
+    registry.register(DesktopToolDefinition("desktop.visual_fallback", "仅在固定测试窗口、状态哈希未变时执行窗口相对坐标 fallback。", DesktopFallbackParams, ActionKind.DESKTOP, "R3", False, True, False, False, 15))
     return registry

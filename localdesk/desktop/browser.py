@@ -40,16 +40,23 @@ class _TextExtractor(HTMLParser):
         self.title = "Untitled web page"
         self._in_title = False
         self._parts: list[str] = []
+        self._ignored_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "title":
             self._in_title = True
+        if tag in {"script", "style", "noscript", "template"}:
+            self._ignored_depth += 1
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self._in_title = False
+        if tag in {"script", "style", "noscript", "template"} and self._ignored_depth:
+            self._ignored_depth -= 1
 
     def handle_data(self, data: str) -> None:
+        if self._ignored_depth:
+            return
         text = " ".join(data.split())
         if not text:
             return
@@ -62,27 +69,69 @@ class _TextExtractor(HTMLParser):
 
 
 class HttpBrowserAdapter:
-    def __init__(self, timeout_seconds: float = 15, max_chars: int = 30_000) -> None:
+    """只读 HTTPS 页面；重定向必须由用户以最终 URL 重新授权。
+
+    不自动跟随重定向是刻意的安全取舍：否则 Policy 虽然校验了原 URL，
+    HTTP 客户端仍可能在未经过域名白名单检查的情况下访问另一个站点。
+    """
+
+    def __init__(
+        self,
+        timeout_seconds: float = 15,
+        max_chars: int = 30_000,
+        max_response_bytes: int = 1_000_000,
+        client: httpx.Client | None = None,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
         self.max_chars = max_chars
+        self.max_response_bytes = max_response_bytes
+        self.client = client
 
     def open(self, url: str) -> WebChunk:
+        owns_client = self.client is None
+        client = self.client or httpx.Client()
         try:
-            response = httpx.get(url, follow_redirects=True, timeout=self.timeout_seconds, headers={"User-Agent": "LocalDeskOfficeAgent/0.2"})
-            response.raise_for_status()
+            with client.stream(
+                "GET",
+                url,
+                follow_redirects=False,
+                timeout=self.timeout_seconds,
+                headers={"User-Agent": "LocalDeskOfficeAgent/0.2", "Accept": "text/html, text/plain;q=0.9"},
+            ) as response:
+                if response.is_redirect:
+                    destination = response.headers.get("location", "unknown destination")
+                    raise BrowserError(f"拒绝自动重定向到 {destination}; 请将最终 HTTPS URL 显式加入授权范围")
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").lower()
+                if "html" not in content_type and "text/plain" not in content_type:
+                    raise BrowserError(f"拒绝非文本网页内容: {content_type or 'unknown'}")
+                declared_size = response.headers.get("content-length")
+                if declared_size:
+                    try:
+                        declared_bytes = int(declared_size)
+                    except ValueError as exc:
+                        raise BrowserError("网页返回了无效的 Content-Length") from exc
+                    if declared_bytes > self.max_response_bytes:
+                        raise BrowserError(f"网页内容超过 {self.max_response_bytes} 字节上限")
+                body = bytearray()
+                for chunk in response.iter_bytes():
+                    body.extend(chunk)
+                    if len(body) > self.max_response_bytes:
+                        raise BrowserError(f"网页内容超过 {self.max_response_bytes} 字节上限")
+                text_body = bytes(body).decode(response.encoding or "utf-8", errors="replace")
         except httpx.HTTPError as exc:
             raise BrowserError(f"网页读取失败: {exc}") from exc
-        content_type = response.headers.get("content-type", "").lower()
-        if "html" not in content_type and "text/plain" not in content_type:
-            raise BrowserError(f"拒绝非文本网页内容: {content_type or 'unknown'}")
+        finally:
+            if owns_client:
+                client.close()
         parser = _TextExtractor()
-        parser.feed(response.text)
+        parser.feed(text_body)
         title, text = parser.result()
         if not text:
             raise BrowserError("网页未提取到可用正文")
         return WebChunk(
-            chunk_id=f"web:{response.url}",
-            url=str(response.url),
+            chunk_id=f"web:{url}",
+            url=url,
             title=title,
             text=text[: self.max_chars],
             accessed_at=datetime.now(UTC).isoformat(),

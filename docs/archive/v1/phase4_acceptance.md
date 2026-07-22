@@ -6,8 +6,8 @@
 
 - `evaluation/evaluation_tasks.json`：25 条无敏感评估样例，覆盖检索、引用、staging、确认/拒绝、越权、Grounded LLM 拒绝、文件 dry-run/冲突/回滚与安全拒绝。
 - README：来源、独立改造范围、架构、安全模型、状态/确认/Trace/staging/哈希、能力边界、Demo 和真实评估状态。
-- `docs/report_demo.md`：可复现的本地资料到确认交付 Demo。
-- `docs/job_materials.md`：3 条简历描述、90 秒介绍、5 个深挖问题真实回答要点。
+- [报告 Demo](report_demo.md)：可复现的本地资料到确认交付 Demo。
+- [求职材料](job_materials.md)：3 条简历描述、90 秒介绍、5 个深挖问题真实回答要点。
 
 ## 可复现结果
 

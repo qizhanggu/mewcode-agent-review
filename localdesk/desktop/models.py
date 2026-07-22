@@ -35,6 +35,7 @@ class ActionKind(str, Enum):
     DELETE = "delete"
     SHELL = "shell"
     NETWORK = "network"
+    DESKTOP = "desktop"
 
 
 @dataclass
