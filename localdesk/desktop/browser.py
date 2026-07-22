@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import hashlib
 from html.parser import HTMLParser
 from typing import Protocol
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -25,9 +27,14 @@ class WebChunk:
     title: str
     text: str
     accessed_at: str
+    content_hash: str = ""
+    discovered_links: tuple[str, ...] = ()
 
     def citation(self) -> str:
         return f"{self.title} ({self.url}; accessed {self.accessed_at})"
+
+    def excerpt(self, limit: int = 280) -> str:
+        return " ".join(self.text.split())[:limit]
 
 
 class BrowserAdapter(Protocol):
@@ -40,6 +47,7 @@ class _TextExtractor(HTMLParser):
         self.title = "Untitled web page"
         self._in_title = False
         self._parts: list[str] = []
+        self._links: list[str] = []
         self._ignored_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -47,6 +55,10 @@ class _TextExtractor(HTMLParser):
             self._in_title = True
         if tag in {"script", "style", "noscript", "template"}:
             self._ignored_depth += 1
+        if tag == "a":
+            href = dict(attrs).get("href")
+            if href:
+                self._links.append(href)
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
@@ -64,8 +76,8 @@ class _TextExtractor(HTMLParser):
             self.title = text
         self._parts.append(text)
 
-    def result(self) -> tuple[str, str]:
-        return self.title, " ".join(self._parts)
+    def result(self) -> tuple[str, str, list[str]]:
+        return self.title, " ".join(self._parts), self._links
 
 
 class HttpBrowserAdapter:
@@ -126,15 +138,23 @@ class HttpBrowserAdapter:
                 client.close()
         parser = _TextExtractor()
         parser.feed(text_body)
-        title, text = parser.result()
+        title, text, raw_links = parser.result()
         if not text:
             raise BrowserError("网页未提取到可用正文")
+        links = []
+        for raw_link in raw_links:
+            candidate = urljoin(url, raw_link)
+            parsed = urlparse(candidate)
+            if parsed.scheme == "https" and parsed.netloc and candidate not in links:
+                links.append(candidate)
         return WebChunk(
             chunk_id=f"web:{url}",
             url=url,
             title=title,
             text=text[: self.max_chars],
             accessed_at=datetime.now(UTC).isoformat(),
+            content_hash=hashlib.sha256(text[: self.max_chars].encode("utf-8")).hexdigest(),
+            discovered_links=tuple(links[:100]),
         )
 
 

@@ -36,6 +36,7 @@ class KnowledgeReportWorkflow:
         web_urls: list[str] | None = None,
         docx_filename: str | None = None,
         docx_renderer: DocxRenderer | None = None,
+        auto_deliver: bool = False,
     ) -> StagedDraft:
         if task.status != TaskStatus.DRAFT:
             raise TaskStateError("只有 draft 任务可以准备报告")
@@ -63,12 +64,20 @@ class KnowledgeReportWorkflow:
                 args={"url": url},
                 summary="读取授权域名内的公开网页并保留引用",
             )
-            evidence.append(self.registry.execute(
+            web_chunk = self.registry.execute(
                 task,
                 web_action,
                 lambda url=url: browser.open(url),
                 verify=lambda result: self.knowledge.workspace.can_browse(result.url) and bool(result.text and result.accessed_at),
-            ))
+            )
+            evidence.append(web_chunk)
+            self.service.trace_store.append(task.task_id, "web_evidence_captured", {
+                "url": web_chunk.url,
+                "accessed_at": web_chunk.accessed_at,
+                "content_hash": web_chunk.content_hash,
+                "citation_excerpt": web_chunk.excerpt(),
+                "discovered_links": list(web_chunk.discovered_links),
+            })
         staged_path, _ = self.document.draft_paths(task.task_id, filename)
         stage_action = PlannedAction(
             action_id="stage-markdown",
@@ -84,7 +93,7 @@ class KnowledgeReportWorkflow:
             verify=lambda result: Path(result.staged_path).exists() and result.sha256 != "",
         )
         review = DeterministicReviewer().review_markdown(draft.staged_path, evidence)
-        self.service.trace_store.append(task.task_id, "review_completed", {"reviewer": "deterministic", "approved": review.approved, "findings": review.findings})
+        self.service.trace_store.append(task.task_id, "review_completed", {"reviewer": "deterministic", "approved": review.approved, "findings": review.findings, "warnings": review.warnings, "blockers": review.blockers})
         if not review.approved:
             self.service.fail(task, "; ".join(review.findings), event_type="review_rejected")
             raise TaskStateError("草稿未通过确定性 Reviewer")
@@ -101,6 +110,7 @@ class KnowledgeReportWorkflow:
                 "indexed_chunks": indexed,
             },
         )]
+        actions[0].args["auto_deliver"] = auto_deliver
         if docx_filename:
             if docx_renderer is None:
                 self.service.fail(task, "DOCX 交付需要可用的渲染检查器", event_type="docx_render_unavailable")
@@ -129,7 +139,7 @@ class KnowledgeReportWorkflow:
                 action_id="deliver-docx",
                 skill="document.commit_docx",
                 kind=ActionKind.WRITE,
-                args={"destination": docx_draft.final_path},
+                args={"destination": docx_draft.final_path, "auto_deliver": auto_deliver},
                 summary="确认后将已检查的 staging DOCX 交付到 output 目录",
                 preview={
                     "staged_path": docx_draft.staged_path,
@@ -140,9 +150,12 @@ class KnowledgeReportWorkflow:
                     "render": docx_draft.render.__dict__,
                 },
             ))
-        self.service.set_plan(task, "检索授权资料并生成 Markdown 草稿；DOCX 需通过结构与渲染检查；确认后交付到 output。", actions)
+        self.service.set_plan(task, "检索授权资料并生成 Markdown 草稿；DOCX 需通过结构与渲染检查；按风险策略交付到 output。", actions)
         self.service.trace_store.append(task.task_id, "knowledge_searched", {"query": task.user_query, "indexed_chunks": indexed, "citations": draft.source_citations})
         self.service.trace_store.append(task.task_id, "draft_staged", asdict(draft))
+        if auto_deliver:
+            self.service.start_low_risk(task, "新建产物写入专属 output_root，不覆盖、不外发")
+            self.confirm_and_deliver(task, approved=True)
         return draft
 
     async def prepare_grounded(self, task: Task, filename: str, renderer: GroundedLLMRenderer) -> StagedDraft:
@@ -171,9 +184,12 @@ class KnowledgeReportWorkflow:
         return draft
 
     def confirm_and_deliver(self, task: Task, approved: bool) -> None:
-        self.service.confirm(task, approved)
-        if not approved:
-            return
+        if task.status == TaskStatus.AWAITING_CONFIRMATION:
+            self.service.confirm(task, approved)
+            if not approved:
+                return
+        elif task.status != TaskStatus.EXECUTING:
+            raise TaskStateError("任务既不在等待确认，也不在低风险自动执行状态")
         actions = self._delivery_actions(task)
         try:
             deliveries = []

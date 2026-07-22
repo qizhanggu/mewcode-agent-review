@@ -36,6 +36,24 @@ class DocumentSkill:
         staged.write_text(_render_markdown(title, query, chunks), encoding="utf-8", newline="\n")
         return StagedDraft(str(staged), str(final), _sha256(staged), [chunk.citation() for chunk in chunks], f"基于 {len(chunks)} 个可定位资料片段生成 Markdown 草稿")
 
+    def stage_custom_markdown(
+        self,
+        task_id: str,
+        content: str,
+        citations: list[str],
+        filename: str,
+        summary: str,
+    ) -> StagedDraft:
+        """暂存专用业务工作流生成的 Markdown，并复用统一交付契约。"""
+        staged, final = self.draft_paths(task_id, filename)
+        if final.exists():
+            raise WorkspaceError(f"禁止覆盖已有文件: {final}")
+        if not content.strip():
+            raise WorkspaceError("不能暂存空 Markdown")
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_text(content.rstrip() + "\n", encoding="utf-8", newline="\n")
+        return StagedDraft(str(staged), str(final), _sha256(staged), citations, summary)
+
     def commit(self, draft: StagedDraft) -> None:
         self.validate_commit(draft)
         staged, final = Path(draft.staged_path), Path(draft.final_path)

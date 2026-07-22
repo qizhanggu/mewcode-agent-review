@@ -8,7 +8,9 @@ from localdesk.desktop.policy import DesktopPolicyGuard
 from localdesk.desktop.browser import HttpBrowserAdapter
 from localdesk.desktop.docx_delivery import LibreOfficeDocxRenderer
 from localdesk.desktop.computer_use import DesktopComputerWorkflow, WindowsUiaAdapter
+from localdesk.desktop.dashboard import render_task_board
 from localdesk.desktop.file_workflow import FileOrganizationWorkflow
+from localdesk.desktop.job_materials import JobMaterialRequest, JobMaterialsWorkflow
 from localdesk.desktop.reporting import KnowledgeReportWorkflow
 from localdesk.desktop.registry import DesktopToolExecutionError, create_desktop_registry
 from localdesk.desktop.service import DesktopTaskService, TaskStateError
@@ -29,6 +31,7 @@ def run_desktop_foundation(args: Namespace) -> int:
         getattr(args, "desktop_file_organize_root", None)
         or getattr(args, "desktop_rollback_task", None)
         or getattr(args, "desktop_confirm_task", None)
+        or getattr(args, "desktop_task_board", False)
     )
     if not args.desktop_read_root and not file_only_request:
         print("Desktop mode requires at least one --desktop-read-root", flush=True)
@@ -56,8 +59,14 @@ def run_desktop_foundation(args: Namespace) -> int:
     service = DesktopTaskService(DesktopPolicyGuard(workspace), trace_store)
     registry = create_desktop_registry(service)
     workflow = KnowledgeReportWorkflow(service, KnowledgeSkill(workspace), DocumentSkill(workspace), registry)
+    job_workflow = JobMaterialsWorkflow(service, KnowledgeSkill(workspace), DocumentSkill(workspace), registry)
     file_workflow = FileOrganizationWorkflow(service, FileSkill(workspace), registry)
     computer_workflow = DesktopComputerWorkflow(service, WindowsUiaAdapter(), registry)
+
+    if getattr(args, "desktop_task_board", False):
+        board = render_task_board(trace_store)
+        print(f"LocalDesk task board: {board}")
+        return 0
 
     if getattr(args, "desktop_confirm_task", None):
         try:
@@ -132,10 +141,46 @@ def run_desktop_foundation(args: Namespace) -> int:
         else:
             print("nothing to move: dry-run produced no file operation")
         return 0
+    if getattr(args, "desktop_job_materials", False):
+        urls = list(getattr(args, "desktop_web_url", []))
+        if len(urls) != 1:
+            print("Desktop job materials error: 需要且只接受一个 --desktop-web-url 岗位 JD", flush=True)
+            return 2
+        if not getattr(args, "desktop_company", None) or not getattr(args, "desktop_role", None):
+            print("Desktop job materials error: 需要 --desktop-company 和 --desktop-role", flush=True)
+            return 2
+        if not getattr(args, "desktop_report_name", None):
+            print("Desktop job materials error: 需要 --desktop-report-name", flush=True)
+            return 2
+        try:
+            draft = job_workflow.prepare(
+                task,
+                JobMaterialRequest(
+                    company=args.desktop_company,
+                    role=args.desktop_role,
+                    jd_url=urls[0],
+                    markdown_filename=args.desktop_report_name,
+                    docx_filename=getattr(args, "desktop_docx_name", None),
+                    feedback=getattr(args, "desktop_feedback", ""),
+                ),
+                HttpBrowserAdapter(),
+                LibreOfficeDocxRenderer() if getattr(args, "desktop_docx_name", None) else None,
+                auto_deliver=True,
+            )
+        except (DesktopToolExecutionError, TaskStateError, ValueError) as exc:
+            print(f"Desktop job materials error: {exc}", flush=True)
+            return 2
+        print(f"LocalDesk job materials delivered: {task.task_id}")
+        print(f"status: {task.status.value}")
+        print(f"markdown: {draft.final_path}")
+        if getattr(args, "desktop_docx_name", None):
+            print(f"docx: {workspace.output_root / args.desktop_docx_name}")
+        print("risk policy: new local artifacts auto-delivered; overwrite and external submission remain blocked")
+        return 0
     if getattr(args, "desktop_report_name", None):
         try:
             if getattr(args, "desktop_web_url", []):
-                draft = workflow.prepare(task, args.desktop_report_name, browser=HttpBrowserAdapter(), web_urls=list(args.desktop_web_url), docx_filename=getattr(args, "desktop_docx_name", None), docx_renderer=LibreOfficeDocxRenderer() if getattr(args, "desktop_docx_name", None) else None)
+                draft = workflow.prepare(task, args.desktop_report_name, browser=HttpBrowserAdapter(), web_urls=list(args.desktop_web_url), docx_filename=getattr(args, "desktop_docx_name", None), docx_renderer=LibreOfficeDocxRenderer() if getattr(args, "desktop_docx_name", None) else None, auto_deliver=not getattr(args, "desktop_require_confirmation", False))
             elif getattr(args, "desktop_grounded_llm", False):
                 if getattr(args, "desktop_docx_name", None):
                     raise ValueError("Grounded LLM 报告暂未接入 DOCX 质量门；请先使用确定性 Markdown → DOCX 交付路径")
@@ -148,7 +193,7 @@ def run_desktop_foundation(args: Namespace) -> int:
                     raise ValueError("没有配置可用模型 provider")
                 draft = asyncio.run(workflow.prepare_grounded(task, args.desktop_report_name, GroundedLLMRenderer(create_client(config.providers[0]))))
             else:
-                draft = workflow.prepare(task, args.desktop_report_name, docx_filename=getattr(args, "desktop_docx_name", None), docx_renderer=LibreOfficeDocxRenderer() if getattr(args, "desktop_docx_name", None) else None)
+                draft = workflow.prepare(task, args.desktop_report_name, docx_filename=getattr(args, "desktop_docx_name", None), docx_renderer=LibreOfficeDocxRenderer() if getattr(args, "desktop_docx_name", None) else None, auto_deliver=not getattr(args, "desktop_require_confirmation", False))
         except (DesktopToolExecutionError, TaskStateError, ValueError) as exc:
             print(f"Desktop report error: {exc}", flush=True)
             return 2
@@ -158,7 +203,10 @@ def run_desktop_foundation(args: Namespace) -> int:
         print(f"planned output: {draft.final_path}")
         print(f"citations: {len(draft.source_citations)}")
         print(f"renderer: {'grounded-llm' if getattr(args, 'desktop_grounded_llm', False) else 'deterministic'}")
-        print(f"confirm with --desktop-confirm-task {task.task_id}")
+        if task.status.value == "awaiting_confirmation":
+            print(f"confirm with --desktop-confirm-task {task.task_id}")
+        else:
+            print("delivered automatically under low-risk new-artifact policy")
         return 0
     print(f"LocalDesk task created: {task.task_id}")
     print(f"status: {task.status.value}")

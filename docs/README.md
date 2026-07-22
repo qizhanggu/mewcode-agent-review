@@ -10,6 +10,8 @@
 | [Phase 3：DOCX 交付与质量检查](phase3_docx_delivery.md) | Markdown 到 DOCX、结构检查、渲染检查与确认交付 | 已完成 |
 | [Phase 4：受控文件整理与独立回滚](phase4_file_organization.md) | dry-run、独立确认、journal、哈希复核与独立 rollback | 已完成 |
 | [Phase 5：Windows Desktop Computer Use](phase5_desktop_computer_use.md) | UIA、状态验证、人工接管与受限视觉 fallback | 已完成 |
+| [Phase 6A：工程基线冻结](phase6a_baseline.md) | 统一评测、真实 Demo、README 与只读 Trace 看板 | 已完成 |
+| [Phase 6B：定向求职材料闭环](phase6b_job_materials.md) | JD + 本地履历 → 匹配材料 → DOCX → 低风险交付 → Trace | 第一版已完成 |
 | [评测说明](../evaluation/README.md) | 评测集、运行方式与结果口径 | 持续积累 |
 | [重构总计划](../计划.md) | 阶段路线、验收标准和决策依据 | 当前有效 |
 | [v1 历史归档](archive/v1/README.md) | 改造前的设计、验收和展示材料 | 仅供追溯 |

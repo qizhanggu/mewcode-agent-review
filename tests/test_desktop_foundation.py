@@ -162,6 +162,16 @@ def test_rejected_action_cannot_enter_execution(workspace: DesktopWorkspace, tmp
         service.confirm(task, approved=True)
 
 
+def test_auto_deliver_flag_only_applies_to_registered_document_commit(workspace: DesktopWorkspace) -> None:
+    guard = DesktopPolicyGuard(workspace)
+    destination = str(workspace.output_root / "new.md")
+    forged = PlannedAction("forged", "test", ActionKind.WRITE, {"destination": destination, "auto_deliver": True}, "forged")
+    document_commit = PlannedAction("commit", "document.commit_markdown", ActionKind.WRITE, {"destination": destination, "auto_deliver": True}, "commit")
+
+    assert guard.evaluate(forged).requires_confirmation
+    assert not guard.evaluate(document_commit).requires_confirmation
+
+
 def test_desktop_registry_does_not_leak_coding_tools() -> None:
     names = {tool.name for tool in create_desktop_registry().list_tools()}
     assert names.isdisjoint({"Bash", "WriteFile", "EditFile", "Agent", "TeamCreate"})

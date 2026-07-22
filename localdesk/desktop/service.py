@@ -66,6 +66,12 @@ class DesktopTaskService:
         self.trace_store.append(task.task_id, "confirmation", {"approved": approved})
         self._transition(task, TaskStatus.EXECUTING if approved else TaskStatus.CANCELLED)
 
+    def start_low_risk(self, task: Task, reason: str) -> None:
+        if task.status != TaskStatus.PLANNED:
+            raise TaskStateError("只有已计划的低风险任务可以自动开始")
+        self.trace_store.append(task.task_id, "low_risk_auto_approved", {"reason": reason})
+        self._transition(task, TaskStatus.EXECUTING)
+
     def finish(self, task: Task, error: str | None = None) -> None:
         if task.status != TaskStatus.EXECUTING:
             raise TaskStateError("只有执行中的任务可以完成")

@@ -35,7 +35,7 @@ class DesktopPolicyGuard:
             if action.kind == ActionKind.DESKTOP:
                 return self._evaluate_desktop(action)
             if action.kind == ActionKind.WRITE:
-                return self._evaluate_write(action.args)
+                return self._evaluate_write(action)
             if action.kind in {ActionKind.MOVE, ActionKind.RENAME}:
                 return self._evaluate_manage(action.args, action.kind)
         except WorkspaceError as exc:
@@ -68,7 +68,8 @@ class DesktopPolicyGuard:
             return PolicyDecision("deny", f"读取路径越出授权范围: {path}")
         return PolicyDecision("allow", "授权目录内的只读操作")
 
-    def _evaluate_write(self, args: dict[str, Any]) -> PolicyDecision:
+    def _evaluate_write(self, action: PlannedAction) -> PolicyDecision:
+        args = action.args
         destination = self._required_path(args, "destination")
         if not self.workspace.can_write_artifact(destination):
             return PolicyDecision("deny", f"写入目标不在 staging 或 output 目录: {destination}")
@@ -76,6 +77,8 @@ class DesktopPolicyGuard:
             return PolicyDecision("deny", f"禁止覆盖已有文件: {destination}")
         if self.workspace.is_task_artifact(destination):
             return PolicyDecision("allow", "任务 staging 内的草稿写入")
+        if action.skill in {"document.commit_markdown", "document.commit_docx"} and args.get("auto_deliver") is True:
+            return PolicyDecision("allow", "新建低风险产物允许自动交付；覆盖和外发仍需确认")
         return PolicyDecision("ask", "写入产物需要确认", requires_confirmation=True)
 
     def _evaluate_manage(self, args: dict[str, Any], kind: ActionKind) -> PolicyDecision:

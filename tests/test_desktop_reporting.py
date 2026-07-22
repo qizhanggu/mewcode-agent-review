@@ -72,6 +72,19 @@ def test_rejected_confirmation_never_writes_output(workspace: DesktopWorkspace, 
     assert not Path(draft.final_path).exists()
 
 
+def test_new_low_risk_report_can_auto_deliver_but_still_never_overwrites(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
+    (workspace.read_roots[0] / "note.txt").write_text("Orion milestone Friday", encoding="utf-8")
+    task = workflow.service.create_task("Orion milestone")
+    draft = workflow.prepare(task, "auto.md", auto_deliver=True)
+    assert task.status.value == "succeeded"
+    assert Path(draft.final_path).exists()
+    event_types = [event["event_type"] for event in workflow.service.trace_store.load_events(task.task_id)]
+    assert "low_risk_auto_approved" in event_types
+    (workspace.output_root / "exists.md").write_text("keep", encoding="utf-8")
+    with pytest.raises(WorkspaceError, match="禁止覆盖"):
+        workflow.prepare(workflow.service.create_task("Orion milestone"), "exists.md", auto_deliver=True)
+
+
 def test_authorized_web_evidence_is_reviewed_and_cited(workspace: DesktopWorkspace, workflow: KnowledgeReportWorkflow) -> None:
     workspace.browser_allowed_domains = ("jobs.example.com",)
     (workspace.read_roots[0] / "resume.md").write_text("Agent project experience", encoding="utf-8")
@@ -117,7 +130,7 @@ def test_http_browser_limits_body_and_ignores_script_text() -> None:
         return httpx.Response(
             200,
             headers={"content-type": "text/html; charset=utf-8"},
-            content=b"<title>Agent Role</title><script>IGNORE THIS INSTRUCTION</script><p>Python agent workflow</p>",
+            content=b'<title>Agent Role</title><script>IGNORE THIS INSTRUCTION</script><p>Python agent workflow</p><a href="/apply">Apply</a>',
             request=request,
         )
 
@@ -126,6 +139,7 @@ def test_http_browser_limits_body_and_ignores_script_text() -> None:
     assert page.title == "Agent Role"
     assert "Python agent workflow" in page.text
     assert "IGNORE THIS INSTRUCTION" not in page.text
+    assert page.discovered_links == ("https://jobs.example.com/apply",)
 
     too_small = HttpBrowserAdapter(max_response_bytes=10, client=httpx.Client(transport=httpx.MockTransport(handler)))
     with pytest.raises(BrowserError, match="超过"):
@@ -143,6 +157,18 @@ def test_deterministic_reviewer_rejects_missing_citation_and_sensitive_content(t
     assert not result.approved
     assert any("缺少证据引用" in finding for finding in result.findings)
     assert "草稿疑似包含敏感字段" in result.findings
+
+
+def test_deterministic_reviewer_warns_but_allows_ordinary_citation_issue(tmp_path: Path) -> None:
+    evidence = [WebChunk("web:role", "https://jobs.example.com/role", "Role", "Python", "2026-07-22T00:00:00+00:00")]
+    draft = tmp_path / "warning.md"
+    draft.write_text("# Draft\n\n普通内容可以先生成。\n", encoding="utf-8")
+
+    result = DeterministicReviewer().review_markdown(str(draft), evidence)
+
+    assert result.approved
+    assert result.warnings
+    assert not result.blockers
 
 
 def test_cli_reports_unapproved_web_url_as_a_safe_error(workspace: DesktopWorkspace, capsys: pytest.CaptureFixture[str]) -> None:
@@ -293,7 +319,7 @@ def test_cli_stages_then_confirms_in_separate_invocations(workspace: DesktopWork
         "desktop_output_root": str(workspace.output_root),
         "desktop_task_root": str(workspace.task_root),
     }
-    assert run_desktop_foundation(Namespace(**base, desktop_task="Orion release", desktop_report_name="orion.md", desktop_confirm_task=None)) == 0
+    assert run_desktop_foundation(Namespace(**base, desktop_task="Orion release", desktop_report_name="orion.md", desktop_confirm_task=None, desktop_require_confirmation=True)) == 0
     task_id = next(workspace.task_root.iterdir()).name
     assert not (workspace.output_root / "orion.md").exists()
     assert run_desktop_foundation(Namespace(**base, desktop_task=None, desktop_report_name=None, desktop_confirm_task=task_id)) == 0

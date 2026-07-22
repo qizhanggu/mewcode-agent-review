@@ -52,3 +52,13 @@ python evaluation/run_phase4_evaluation.py
 ```
 
 该脚本记录 UIA workflow 的离线回归：窗口白名单、确认绑定、状态变化时停止并人工接管，以及 state-bound fallback。真实验收使用仓库自建的 WinForms 测试窗口和构造文本完成，不访问外部系统；详情见 `docs/phase5_desktop_computer_use.md`。
+
+## Phase 6A：基线冻结、真实 Office Demo 与公网 Trace
+
+```powershell
+.\.venv\Scripts\python.exe evaluation\run_phase6a_evaluation.py
+.\.venv\Scripts\python.exe evaluation\run_phase6a_demo.py
+.\.venv\Scripts\python.exe evaluation\run_real_web_trace.py
+```
+
+第一条生成统一离线回归结果；第二条使用构造 JD/履历和真实 LibreOffice 验收求职材料 DOCX；第三条只读访问一个真实公开 HTTPS 页面，并在 Trace 中保存 URL、访问时间、内容哈希、引用片段和发现链接。三类证据分开记录，不能用离线 fake adapter 的通过率代替真实联网或真实渲染结果。

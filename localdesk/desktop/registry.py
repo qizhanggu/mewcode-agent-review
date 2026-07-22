@@ -25,6 +25,7 @@ class StageMarkdownParams(BaseModel):
 
 class CommitMarkdownParams(BaseModel):
     destination: str
+    auto_deliver: bool = False
 
 
 class StageDocxParams(BaseModel):
@@ -34,6 +35,7 @@ class StageDocxParams(BaseModel):
 
 class CommitDocxParams(BaseModel):
     destination: str
+    auto_deliver: bool = False
 
 
 class FileScanParams(BaseModel):
