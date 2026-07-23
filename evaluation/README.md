@@ -69,3 +69,24 @@ python evaluation/run_phase4_evaluation.py
 - `theagentcompany/task_shortlist.json` 保存 8 条产品相近任务的系统、产物、验证方式和能力缺口。
 - 当前状态仅为任务盘点与可行性调研：没有 OfficeBench Adapter、没有运行官方任务、没有官方通过结果，也没有部署 TheAgentCompany。
 - 3 条冻结评测任务只属于接入可行性 Pilot，不能作为完整 Benchmark 成绩或简历指标。
+
+## Phase 7 B2A：离线 OfficeBench Adapter
+
+生成固定 commit 的 300 条任务静态统计：
+
+```powershell
+.\.venv\Scripts\python.exe -m evaluation.officebench.analyze_tasks `
+  --snapshot .localdesk\benchmark-sources\OfficeBench
+```
+
+执行 Dev `1-16/0` dry-run：
+
+```powershell
+.\.venv\Scripts\python.exe -m evaluation.officebench.adapter `
+  --snapshot .localdesk\benchmark-sources\OfficeBench `
+  --manifest evaluation\officebench\pilot_manifest.json `
+  --run-root .localdesk\benchmark-runs `
+  --output evaluation\officebench\results\dev_1-16_0_dry_run.json
+```
+
+dry-run 只校验 commit、任务哈希、字段转换、目录约定和官方环境可用性；不会创建运行目录、调用 Runtime/模型或执行官方 Evaluator。`tests/test_officebench_adapter.py` 使用自建 fixture 验证 Adapter 契约，不能解释为 OfficeBench 任务通过。
