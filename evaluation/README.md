@@ -62,3 +62,10 @@ python evaluation/run_phase4_evaluation.py
 ```
 
 第一条生成统一离线回归结果；第二条使用构造 JD/履历和真实 LibreOffice 验收求职材料 DOCX；第三条只读访问一个真实公开 HTTPS 页面，并在 Trace 中保存 URL、访问时间、内容哈希、引用片段和发现链接。三类证据分开记录，不能用离线 fake adapter 的通过率代替真实联网或真实渲染结果。
+
+## Phase 7 B0+B1：公共 Benchmark 元数据
+
+- `officebench/pilot_manifest.json` 固定 OfficeBench 官方 commit、2 条开发任务和 3 条冻结评测任务及其 SHA-256。
+- `theagentcompany/task_shortlist.json` 保存 8 条产品相近任务的系统、产物、验证方式和能力缺口。
+- 当前状态仅为任务盘点与可行性调研：没有 OfficeBench Adapter、没有运行官方任务、没有官方通过结果，也没有部署 TheAgentCompany。
+- 3 条冻结评测任务只属于接入可行性 Pilot，不能作为完整 Benchmark 成绩或简历指标。

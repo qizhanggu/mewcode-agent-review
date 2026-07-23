@@ -12,6 +12,7 @@
 | [Phase 5：Windows Desktop Computer Use](phase5_desktop_computer_use.md) | UIA、状态验证、人工接管与受限视觉 fallback | 已完成 |
 | [Phase 6A：工程基线冻结](phase6a_baseline.md) | 统一评测、真实 Demo、README 与只读 Trace 看板 | 已完成 |
 | [Phase 6B：定向求职材料闭环](phase6b_job_materials.md) | JD + 本地履历 → 匹配材料 → DOCX → 低风险交付 → Trace | 第一版已完成 |
+| [Phase 7 B0+B1：公共 Benchmark 可行性](benchmark_feasibility.md) | OfficeBench 任务冻结、能力映射、Windows Spike 与 TheAgentCompany 调研 | B0+B1 已完成，B2 待审批 |
 | [评测说明](../evaluation/README.md) | 评测集、运行方式与结果口径 | 持续积累 |
 | [重构总计划](../计划.md) | 阶段路线、验收标准和决策依据 | 当前有效 |
 | [v1 历史归档](archive/v1/README.md) | 改造前的设计、验收和展示材料 | 仅供追溯 |
